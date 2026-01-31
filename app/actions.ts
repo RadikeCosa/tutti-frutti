@@ -303,3 +303,87 @@ export async function finalizarPuntuacion({
   }
   redirect(`/resultados/${salaId}/${rondaId}`);
 }
+
+// --- Server Actions para resultados ---
+interface NuevaRondaInput {
+  readonly salaId: string;
+}
+
+export async function nuevaRonda({ salaId }: NuevaRondaInput) {
+  const supabase = await createClient();
+
+  // Obtener última ronda
+  const { data: ultima, error: ultimaError } = await supabase
+    .from("rondas")
+    .select("numero_ronda")
+    .eq("sala_id", salaId)
+    .order("numero_ronda", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (ultimaError) {
+    console.error("Error al obtener última ronda:", ultimaError);
+    throw new Error("No se pudo obtener la última ronda");
+  }
+
+  const numeroRonda = (ultima?.numero_ronda ?? 0) + 1;
+  const letra = randomLetter();
+
+  // Crear nueva ronda
+  const { error: rondaError } = await supabase.from("rondas").insert([
+    {
+      sala_id: salaId,
+      numero_ronda: numeroRonda,
+      letra,
+      estado: "escribiendo",
+    },
+  ]);
+
+  if (rondaError) {
+    console.error("Error al crear nueva ronda:", rondaError);
+    throw new Error("No se pudo crear la nueva ronda");
+  }
+
+  // Actualizar sala
+  const { error: salaError } = await supabase
+    .from("salas")
+    .update({ estado: "jugando" })
+    .eq("id", salaId);
+
+  if (salaError) {
+    console.error("Error al actualizar sala:", salaError);
+    throw new Error("No se pudo actualizar la sala");
+  }
+
+  // Marcar todos los jugadores como no listos
+  const { error: jugadoresError } = await supabase
+    .from("jugadores")
+    .update({ listo: false })
+    .eq("sala_id", salaId);
+
+  if (jugadoresError) {
+    console.error("Error al actualizar jugadores:", jugadoresError);
+    throw new Error("No se pudo actualizar jugadores");
+  }
+
+  redirect(`/juego/${salaId}`);
+}
+
+interface FinalizarJuegoInput {
+  readonly salaId: string;
+}
+
+export async function finalizarJuego({ salaId }: FinalizarJuegoInput) {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("salas")
+    .update({ estado: "finalizada" })
+    .eq("id", salaId);
+
+  if (error) {
+    console.error("Error al finalizar juego:", error);
+    throw new Error("No se pudo finalizar el juego");
+  }
+
+  redirect(`/ranking/${salaId}`);
+}
