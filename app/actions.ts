@@ -1,5 +1,68 @@
+// Guardar respuestas y marcar jugador como listo
+interface GuardarRespuestasInput {
+  salaId: string;
+  rondaId: string;
+  jugadorId: string;
+  respuestas: string[];
+  categorias: string[];
+  letra: string;
+}
+
+export async function guardarRespuestas({
+  salaId,
+  rondaId,
+  jugadorId,
+  respuestas,
+  categorias,
+  letra,
+}: GuardarRespuestasInput) {
+  const supabase = await createClient();
+  // Upsert respuestas (una por categoría)
+  const upserts = categorias.map((categoria, idx) => ({
+    sala_id: salaId,
+    ronda_id: rondaId,
+    jugador_id: jugadorId,
+    categoria,
+    letra,
+    respuesta: respuestas[idx] || "",
+  }));
+  const { error: upsertError } = await supabase
+    .from("respuestas")
+    .upsert(upserts, { onConflict: ["ronda_id", "jugador_id", "categoria"] });
+  if (upsertError) {
+    console.error("Error al guardar respuestas:", upsertError);
+    throw new Error("No se pudieron guardar las respuestas");
+  }
+  // Marcar jugador como listo
+  const { error: listoError } = await supabase
+    .from("jugadores")
+    .update({ listo: true })
+    .eq("id", jugadorId)
+    .eq("sala_id", salaId);
+  if (listoError) {
+    console.error("Error al marcar listo:", listoError);
+    throw new Error("No se pudo marcar como listo");
+  }
+}
+
+// Terminar ronda (solo organizador)
+interface TerminarRondaInput {
+  rondaId: string;
+}
+
+export async function terminarRonda({ rondaId }: TerminarRondaInput) {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("rondas")
+    .update({ estado: "puntuando" })
+    .eq("id", rondaId);
+  if (error) {
+    console.error("Error al terminar ronda:", error);
+    throw new Error("No se pudo terminar la ronda");
+  }
+}
 // app/actions.ts
-"use server";
+("use server");
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 
