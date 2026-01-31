@@ -61,8 +61,8 @@ export default function LobbyPage({ params }: LobbyPageProps) {
         .single();
 
       if (!salaData) {
-        setError("Sala no encontrada");
-        setLoading(false);
+        // Redirigir a home con mensaje si la sala no existe
+        router.replace(`/?error=SalaNoEncontrada`);
         return;
       }
 
@@ -190,16 +190,6 @@ export default function LobbyPage({ params }: LobbyPageProps) {
     );
   }
 
-  if (error && !sala) {
-    return (
-      <main className="flex min-h-screen items-center justify-center">
-        <div className="bg-white rounded-lg shadow p-8 text-center">
-          <h2 className="text-2xl font-bold mb-4">{error}</h2>
-        </div>
-      </main>
-    );
-  }
-
   if (!sala) return null;
 
   return (
@@ -216,9 +206,15 @@ export default function LobbyPage({ params }: LobbyPageProps) {
           <div className="font-semibold mb-3">
             Jugadores ({jugadores.length})
           </div>
-          <ul className="flex flex-col gap-2">
+          <ul className="flex flex-col gap-2 transition-all duration-500">
             {jugadores.map((j) => (
-              <li key={j.id} className="flex items-center gap-2">
+              <li
+                key={j.id}
+                className="flex items-center gap-2 bg-white rounded transition-all duration-300 shadow-sm animate-fadein"
+                style={{
+                  animationDelay: `${jugadores.findIndex((jg) => jg.id === j.id) * 60}ms`,
+                }}
+              >
                 <span>{j.nombre}</span>
                 {j.es_organizador && (
                   <span className="text-xs bg-blue-200 text-blue-800 rounded px-2 py-0.5">
@@ -228,6 +224,8 @@ export default function LobbyPage({ params }: LobbyPageProps) {
               </li>
             ))}
           </ul>
+          // Animación fadein para la lista de jugadores import
+          "./lobby-animations.css";
         </div>
 
         {isOrganizador && (

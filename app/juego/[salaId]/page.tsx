@@ -49,12 +49,13 @@ export default function JuegoPage({ params }: JuegoPageProps) {
     if (typeof window === "undefined") return;
     const param = searchParams.get("jugadorId");
     const stored = localStorage.getItem("jugadorId");
-
     if (param) {
       setJugadorId(param);
       localStorage.setItem("jugadorId", param);
     } else if (stored) {
       setJugadorId(stored);
+    } else {
+      setJugadorId(null);
     }
   }, [searchParams]);
 
@@ -71,11 +72,14 @@ export default function JuegoPage({ params }: JuegoPageProps) {
         .single();
 
       if (!salaData) {
-        setError("Sala no encontrada");
-        setLoading(false);
+        router.replace(`/?error=SalaNoEncontrada`);
         return;
       }
       setSala(salaData);
+      if (salaData.estado === "lobby") {
+        router.replace(`/lobby/${salaId}?jugadorId=${localStorage.getItem("jugadorId") || ""}`);
+        return;
+      }
 
       // Ronda actual
       const { data: rondaData } = await supabase
@@ -145,10 +149,13 @@ export default function JuegoPage({ params }: JuegoPageProps) {
           filter: `id=eq.${ronda.id}`,
         },
         (payload: { new: { estado: string } }) => {
-          if (payload.new.estado === "puntuando") {
-            router.push(`/puntuar/${salaId}/${ronda.id}`);
-          }
           setRonda((prev) => (prev ? { ...prev, ...payload.new } : prev));
+          if (payload.new.estado === "puntuando") {
+            const yo = jugadores.find((j) => j.id === jugadorId);
+            if (yo?.es_organizador) {
+              router.push(`/puntuar/${salaId}/${ronda.id}`);
+            }
+          }
         },
       )
       .subscribe();
@@ -157,7 +164,7 @@ export default function JuegoPage({ params }: JuegoPageProps) {
       supabase.removeChannel(jugadoresSub);
       supabase.removeChannel(rondaSub);
     };
-  }, [salaId, ronda?.id, router, supabase]);
+  }, [salaId, ronda?.id, router, supabase, jugadores, jugadorId]);
 
   // Contador de listos
   const listos = jugadores.filter((j) => j.listo).length;
@@ -215,7 +222,25 @@ export default function JuegoPage({ params }: JuegoPageProps) {
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center">
-        <div className="text-center">Cargando...</div>
+        <div className="w-full max-w-md">
+          <div className="animate-pulse space-y-6">
+            <div className="h-8 bg-gray-200 rounded w-1/2 mx-auto mb-4" />
+            <div className="h-16 bg-gray-200 rounded mb-4" />
+            <div className="h-40 bg-gray-200 rounded" />
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (!jugadorId) {
+    return (
+      <main className="flex min-h-screen items-center justify-center">
+        <div className="bg-white rounded-lg shadow p-8 text-center">
+          <h2 className="text-2xl font-bold mb-4 text-red-600">
+            No se encontró tu jugador. Vuelve a unirte a la sala.
+          </h2>
+        </div>
       </main>
     );
   }
@@ -231,6 +256,19 @@ export default function JuegoPage({ params }: JuegoPageProps) {
   }
 
   if (!sala || !ronda) return null;
+
+  // Si la ronda está en puntuando y no soy organizador, mostrar mensaje de espera
+  if (ronda.estado === "puntuando" && !esOrganizador) {
+    return (
+      <main className="flex min-h-screen items-center justify-center">
+        <div className="bg-white rounded-lg shadow p-8 text-center">
+          <h2 className="text-2xl font-bold mb-4 text-blue-600">
+            Esperando puntuación del organizador...
+          </h2>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="flex min-h-screen items-center justify-center p-4">
@@ -271,12 +309,14 @@ export default function JuegoPage({ params }: JuegoPageProps) {
             )}
 
             <div className="flex items-center justify-between mt-2">
-              <span className="text-gray-600 text-sm">
-                {listos} de {total} listos
+              <span className="text-gray-600 text-sm transition-all duration-300">
+                <span className={listos !== total ? "animate-pulse" : ""}>
+                  {listos} de {total} listos
+                </span>
               </span>
               <button
                 type="submit"
-                className="bg-blue-600 text-white font-semibold py-2 px-6 rounded hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                className={`bg-blue-600 text-white font-semibold py-2 px-6 rounded hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed ${listo ? "animate-bounce" : ""}`}
                 disabled={listo || enviando}
               >
                 {listo ? "Esperando..." : "Listo"}
