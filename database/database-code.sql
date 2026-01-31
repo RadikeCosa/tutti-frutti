@@ -58,6 +58,25 @@ CREATE INDEX idx_rondas_sala_id ON rondas(sala_id);
 CREATE INDEX idx_respuestas_jugador_id ON respuestas(jugador_id);
 CREATE INDEX idx_respuestas_ronda_id ON respuestas(ronda_id);
 
+
+-- Eliminar duplicados existentes antes de agregar el constraint de unicidad
+DELETE FROM respuestas a USING (
+  SELECT MIN(id) as id, ronda_id, jugador_id, categoria_index
+  FROM respuestas 
+  GROUP BY ronda_id, jugador_id, categoria_index
+  HAVING COUNT(*) > 1
+) b
+WHERE a.ronda_id = b.ronda_id 
+  AND a.jugador_id = b.jugador_id 
+  AND a.categoria_index = b.categoria_index
+  AND a.id <> b.id;
+
+-- Constraint de unicidad para prevenir que un jugador tenga dos respuestas para la misma categoría en la misma ronda
+-- Previene duplicados en (ronda_id, jugador_id, categoria_index)
+ALTER TABLE respuestas 
+ADD CONSTRAINT unique_respuesta_por_jugador_ronda_categoria 
+UNIQUE (ronda_id, jugador_id, categoria_index);
+
 -- Habilitar RLS
 ALTER TABLE salas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE jugadores ENABLE ROW LEVEL SECURITY;

@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { iniciarJuego } from "@/app/actions";
 import type { SalaEstado } from "@/types/supabase";
+import "./lobby-animations.css";
 
 type JugadorData = { id: string; nombre: string; es_organizador: boolean };
 
@@ -83,7 +84,9 @@ export default function LobbyPage({ params }: LobbyPageProps) {
       setJugadores(jugadoresData || []);
 
       // Verificar si soy organizador
-      const yo = jugadoresData?.find((j: JugadorData) => j.id === jugadorId);
+      const yo = (jugadoresData || []).find(
+        (j: JugadorData) => j.id === jugadorId,
+      );
       setIsOrganizador(!!yo?.es_organizador);
 
       setLoading(false);

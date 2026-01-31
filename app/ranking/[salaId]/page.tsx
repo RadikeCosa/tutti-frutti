@@ -2,6 +2,7 @@
 import { use, useEffect, useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
+import "./ranking-animations.css";
 
 interface RankingEntry {
   jugadorId: string;

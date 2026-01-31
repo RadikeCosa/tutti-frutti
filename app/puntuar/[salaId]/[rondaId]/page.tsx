@@ -129,21 +129,23 @@ export default function PuntuarPage({ params }: PuntuarPageProps) {
   };
 
   const handleSiguiente = async () => {
+    if (!jugadorId) {
+      setError("No se encontró tu sesión");
+      return;
+    }
     setEnviando(true);
     setError(null);
-
     try {
       const puntosArray = respuestasActual.map((resp) => ({
         respuestaId: resp.id,
         puntos: puntosAsignados[resp.id] ?? 0,
+        jugadorId,
       }));
-
       await asignarPuntos(puntosArray);
-
       if (!esUltima) {
         setCategoriaActual((prev) => prev + 1);
       } else {
-        await finalizarPuntuacion({ salaId, rondaId });
+        await finalizarPuntuacion({ salaId, rondaId, jugadorId });
       }
     } catch (e: unknown) {
       const error =

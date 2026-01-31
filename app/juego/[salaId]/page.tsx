@@ -99,6 +99,20 @@ export default function JuegoPage({ params }: JuegoPageProps) {
       }
       setRonda(rondaData);
 
+      // Si la ronda ya está puntuando y soy organizador, redirigir
+      if (rondaData.estado === "puntuando") {
+        const { data: jugadorData } = await supabase
+          .from("jugadores")
+          .select("es_organizador")
+          .eq("id", jugadorId)
+          .single();
+        if (jugadorData?.es_organizador) {
+          router.replace(`/puntuar/${salaId}/${rondaData.id}`);
+          return;
+        }
+        // Si no es organizador, continuar normal (mostrará mensaje de espera)
+      }
+
       // Jugadores
       const { data: jugadoresData } = await supabase
         .from("jugadores")
@@ -208,11 +222,14 @@ export default function JuegoPage({ params }: JuegoPageProps) {
   }
 
   async function handleTerminarRonda() {
+    if (!yo?.id) {
+      setError("No se encontró tu sesión");
+      return;
+    }
     setEnviando(true);
     setError(null);
-
     try {
-      await terminarRonda({ rondaId: ronda!.id });
+      await terminarRonda({ rondaId: ronda!.id, jugadorId: yo.id });
     } catch (e: unknown) {
       const error = e instanceof Error ? e : new Error("Error desconocido");
       setError(error.message);

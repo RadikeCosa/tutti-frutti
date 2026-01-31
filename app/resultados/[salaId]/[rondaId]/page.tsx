@@ -206,10 +206,14 @@ export default function ResultadosPage({ params }: ResultadosPageProps) {
   }, [salaId, rondaId, jugadorId, supabase]);
 
   const handleNuevaRonda = async () => {
+    if (!jugadorId) {
+      setError("No se encontró tu sesión");
+      return;
+    }
     setProcesando(true);
     setError(null);
     try {
-      await nuevaRonda({ salaId });
+      await nuevaRonda({ salaId, jugadorId });
     } catch (e: unknown) {
       const error =
         e instanceof Error ? e : new Error("Error al crear nueva ronda");
@@ -219,10 +223,14 @@ export default function ResultadosPage({ params }: ResultadosPageProps) {
   };
 
   const handleFinalizarJuego = async () => {
+    if (!jugadorId) {
+      setError("No se encontró tu sesión");
+      return;
+    }
     setProcesando(true);
     setError(null);
     try {
-      await finalizarJuego({ salaId });
+      await finalizarJuego({ salaId, jugadorId });
     } catch (e: unknown) {
       const error =
         e instanceof Error ? e : new Error("Error al finalizar juego");
