@@ -1,13 +1,14 @@
-import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase";
-import { unirseConNombre } from "./actions";
+import { unirseConNombre } from "@/app/actions";
 
 interface UnirsePageProps {
-  params: { codigo: string };
+  params: Promise<{ codigo: string }>;
 }
 
 export default async function UnirsePage({ params }: UnirsePageProps) {
-  const codigo = params.codigo?.toUpperCase();
+  const { codigo: codigoRaw } = await params;
+  const codigo = codigoRaw?.toUpperCase();
+
   if (!codigo || codigo.length !== 6) {
     return (
       <main className="flex min-h-screen items-center justify-center">
