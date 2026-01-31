@@ -117,24 +117,16 @@ export default function RankingPage({ params }: RankingPageProps) {
   const podio = ranking.slice(0, 3);
 
   return (
-    <main className="min-h-screen bg-gray-50 p-2 md:p-4 flex flex-col items-center">
+    <main className="min-h-screen bg-gray-50 p-4 flex flex-col items-center">
       <h1 className="text-3xl md:text-4xl font-bold text-center mb-8">
         🏆 Ranking Final 🏆
       </h1>
 
       {loading ? (
-        <div className="w-full max-w-2xl">
-          <div className="animate-pulse space-y-6">
-            <div className="h-8 bg-gray-200 rounded w-1/2 mx-auto mb-4" />
-            <div className="h-32 bg-gray-200 rounded mb-4" />
-            <div className="h-40 bg-gray-200 rounded" />
-          </div>
-        </div>
+        <div className="text-center text-lg">Cargando...</div>
       ) : error ? (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50">
-          <div className="bg-red-600 text-white px-6 py-3 rounded shadow-lg font-semibold animate-fadein">
-            {error}
-          </div>
+        <div className="bg-white rounded-lg shadow p-8 text-center text-red-600 font-semibold">
+          {error}
         </div>
       ) : ranking.length === 0 ? (
         <div className="bg-white rounded-lg shadow p-8 text-center text-gray-600">
@@ -142,8 +134,6 @@ export default function RankingPage({ params }: RankingPageProps) {
         </div>
       ) : (
         <>
-          // Animación fadein para toast
-          import "./ranking-animations.css";
           {/* Podio */}
           <section className="w-full max-w-2xl flex justify-center items-end gap-2 md:gap-6 mb-10">
             {/* Segundo lugar */}

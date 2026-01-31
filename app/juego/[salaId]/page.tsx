@@ -77,7 +77,9 @@ export default function JuegoPage({ params }: JuegoPageProps) {
       }
       setSala(salaData);
       if (salaData.estado === "lobby") {
-        router.replace(`/lobby/${salaId}?jugadorId=${localStorage.getItem("jugadorId") || ""}`);
+        router.replace(
+          `/lobby/${salaId}?jugadorId=${localStorage.getItem("jugadorId") || ""}`,
+        );
         return;
       }
 
