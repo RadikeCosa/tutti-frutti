@@ -1,6 +1,6 @@
 "use client";
 import { use, useEffect, useMemo, useState } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { asignarPuntos, finalizarPuntuacion } from "@/app/actions";
 
@@ -15,23 +15,18 @@ interface Respuesta {
   readonly categoria_index: number;
 }
 
-interface Jugador {
-  readonly id: string;
-  readonly es_organizador: boolean;
-}
-
 type RespuestasPorCategoria = Record<number, Respuesta[]>;
-
 type PuntosAsignados = Record<string, number>;
 
-export default function PuntuarPage({
-  params,
-}: {
-  params: { salaId: string; rondaId: string };
-}) {
-  const { salaId, rondaId } = params;
+interface PuntuarPageProps {
+  params: Promise<{ salaId: string; rondaId: string }>;
+}
+
+export default function PuntuarPage({ params }: PuntuarPageProps) {
+  const { salaId, rondaId } = use(params);
   const searchParams = useSearchParams();
-  const router = useRouter();
+  const supabase = useMemo(() => createBrowserClient(), []);
+
   const [sala, setSala] = useState<Sala | null>(null);
   const [respuestasPorCategoria, setRespuestasPorCategoria] =
     useState<RespuestasPorCategoria>({});
@@ -43,37 +38,42 @@ export default function PuntuarPage({
 
   // Obtener jugadorId de searchParams o localStorage
   const jugadorId = useMemo(() => {
-    let id = searchParams.get("jugadorId");
-    if (id) {
-      if (typeof window !== "undefined") localStorage.setItem("jugadorId", id);
-      return id;
+    if (typeof window === "undefined") return null;
+
+    const param = searchParams.get("jugadorId");
+    const stored = localStorage.getItem("jugadorId");
+
+    if (param) {
+      localStorage.setItem("jugadorId", param);
+      return param;
     }
-    if (typeof window !== "undefined") {
-      id = localStorage.getItem("jugadorId") || undefined;
-    }
-    return id;
+    return stored;
   }, [searchParams]);
 
   useEffect(() => {
     async function fetchData() {
+      if (!jugadorId) {
+        setError("No se encontró el jugadorId.");
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
       setError(null);
-      const supabase = createBrowserClient();
+
       try {
-        if (!jugadorId) {
-          setError("No se encontró el jugadorId.");
-          setLoading(false);
-          return;
-        }
         // Obtener sala
         const { data: salaData, error: salaError } = await supabase
           .from("salas")
           .select("categorias")
           .eq("id", salaId)
           .single();
-        if (salaError || !salaData)
+
+        if (salaError || !salaData) {
           throw salaError || new Error("Sala no encontrada");
+        }
         setSala(salaData);
+
         // Validar organizador
         const { data: jugador, error: jugadorError } = await supabase
           .from("jugadores")
@@ -81,13 +81,17 @@ export default function PuntuarPage({
           .eq("id", jugadorId)
           .eq("sala_id", salaId)
           .single();
-        if (jugadorError || !jugador)
+
+        if (jugadorError || !jugador) {
           throw jugadorError || new Error("Jugador no encontrado");
+        }
+
         if (!jugador.es_organizador) {
           setError("Solo el organizador puede puntuar.");
           setLoading(false);
           return;
         }
+
         // Obtener respuestas
         const { data: respuestas, error: respError } = await supabase
           .from("respuestas")
@@ -95,32 +99,30 @@ export default function PuntuarPage({
           .eq("ronda_id", rondaId)
           .order("categoria_index", { ascending: true })
           .order("id", { ascending: true });
-        if (respError || !respuestas)
+
+        if (respError || !respuestas) {
           throw respError || new Error("No se pudieron obtener respuestas");
+        }
+
         // Agrupar por categoria_index
         const agrupadas: RespuestasPorCategoria = {};
         for (const r of respuestas) {
-          if (!agrupadas[r.categoria_index]) agrupadas[r.categoria_index] = [];
+          if (!agrupadas[r.categoria_index]) {
+            agrupadas[r.categoria_index] = [];
+          }
           agrupadas[r.categoria_index].push(r);
         }
         setRespuestasPorCategoria(agrupadas);
-      } catch (e: any) {
-        setError(e.message || "Error inesperado");
+      } catch (e: unknown) {
+        const error = e instanceof Error ? e : new Error("Error inesperado");
+        setError(error.message);
       } finally {
         setLoading(false);
       }
     }
+
     fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [salaId, rondaId, jugadorId]);
-
-  if (loading) return <div className="p-4 text-center">Cargando...</div>;
-  if (error) return <div className="p-4 text-center text-red-600">{error}</div>;
-  if (!sala) return null;
-
-  const respuestasActual = respuestasPorCategoria[categoriaActual] || [];
-  const categoriaNombre = sala.categorias[categoriaActual] || "";
-  const esUltima = categoriaActual === sala.categorias.length - 1;
+  }, [salaId, rondaId, jugadorId, supabase]);
 
   const handlePuntosChange = (respuestaId: string, puntos: number) => {
     setPuntosAsignados((prev) => ({ ...prev, [respuestaId]: puntos }));
@@ -128,59 +130,110 @@ export default function PuntuarPage({
 
   const handleSiguiente = async () => {
     setEnviando(true);
+    setError(null);
+
     try {
       const puntosArray = respuestasActual.map((resp) => ({
         respuestaId: resp.id,
         puntos: puntosAsignados[resp.id] ?? 0,
       }));
+
       await asignarPuntos(puntosArray);
+
       if (!esUltima) {
         setCategoriaActual((prev) => prev + 1);
       } else {
         await finalizarPuntuacion({ salaId, rondaId });
       }
-    } catch (e: any) {
-      setError(e.message || "Error al asignar puntos");
+    } catch (e: unknown) {
+      const error =
+        e instanceof Error ? e : new Error("Error al asignar puntos");
+      setError(error.message);
     } finally {
       setEnviando(false);
     }
   };
 
+  if (loading || !jugadorId) {
+    return (
+      <main className="flex min-h-screen items-center justify-center">
+        <div className="text-center">Cargando...</div>
+      </main>
+    );
+  }
+
+  if (error) {
+    return (
+      <main className="flex min-h-screen items-center justify-center">
+        <div className="bg-white rounded-lg shadow p-8 text-center">
+          <h2 className="text-2xl font-bold mb-4 text-red-600">{error}</h2>
+        </div>
+      </main>
+    );
+  }
+
+  if (!sala) return null;
+
+  const respuestasActual = respuestasPorCategoria[categoriaActual] || [];
+  const categoriaNombre = sala.categorias[categoriaActual] || "";
+  const esUltima = categoriaActual === sala.categorias.length - 1;
+
   return (
-    <div className="max-w-lg mx-auto p-4">
-      <h2 className="text-xl font-bold mb-4">
-        Categoría {categoriaActual + 1}/5:{" "}
-        <span className="text-primary">{categoriaNombre}</span>
-      </h2>
-      <div className="space-y-4 mb-6">
-        {respuestasActual.map((resp) => (
-          <div key={resp.id} className="flex items-center gap-2">
-            <span className="flex-1">
-              {resp.texto || (
-                <span className="italic text-gray-400">(vacía)</span>
-              )}
-            </span>
-            <input
-              type="number"
-              min={0}
-              className="w-16 border rounded px-2 py-1"
-              value={puntosAsignados[resp.id] ?? 0}
-              onChange={(e) =>
-                handlePuntosChange(resp.id, Number(e.target.value))
-              }
-              disabled={enviando}
-            />
-            <span className="text-xs text-gray-500">puntos</span>
-          </div>
-        ))}
+    <main className="flex min-h-screen items-center justify-center p-4">
+      <div className="w-full max-w-lg bg-white rounded-lg shadow p-6">
+        <h2 className="text-2xl font-bold mb-6 text-center">
+          Categoría {categoriaActual + 1}/5:{" "}
+          <span className="text-blue-600">{categoriaNombre}</span>
+        </h2>
+
+        <div className="space-y-4 mb-6">
+          {respuestasActual.length === 0 ? (
+            <p className="text-center text-gray-500 italic">
+              No hay respuestas para esta categoría
+            </p>
+          ) : (
+            respuestasActual.map((resp) => (
+              <div
+                key={resp.id}
+                className="flex items-center gap-3 p-3 bg-gray-50 rounded"
+              >
+                <span className="flex-1 font-medium">
+                  {resp.texto || (
+                    <span className="italic text-gray-400">(vacía)</span>
+                  )}
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  className="w-20 border border-gray-300 rounded px-3 py-2 text-center focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  value={puntosAsignados[resp.id] ?? 0}
+                  onChange={(e) =>
+                    handlePuntosChange(resp.id, Number(e.target.value))
+                  }
+                  disabled={enviando}
+                />
+                <span className="text-sm text-gray-500 w-12">pts</span>
+              </div>
+            ))
+          )}
+        </div>
+
+        {error && (
+          <div className="mb-4 text-red-600 text-sm text-center">{error}</div>
+        )}
+
+        <button
+          className="w-full py-3 rounded bg-blue-600 text-white font-semibold hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          onClick={handleSiguiente}
+          disabled={enviando}
+        >
+          {enviando
+            ? "Guardando..."
+            : esUltima
+              ? "Finalizar Puntuación"
+              : "Siguiente Categoría"}
+        </button>
       </div>
-      <button
-        className="w-full py-2 rounded bg-primary text-white font-semibold disabled:opacity-60"
-        onClick={handleSiguiente}
-        disabled={enviando}
-      >
-        {esUltima ? "Finalizar" : "Siguiente"}
-      </button>
-    </div>
+    </main>
   );
 }
