@@ -4,166 +4,234 @@ applyTo: "**"
 
 # GitHub Copilot Instructions - Tutti Frutti
 
-## Contexto del Proyecto
+## General Rules
 
-Juego multijugador tipo Tuti-Fruti (Stop/Basta) online donde:
+- Do not change the project stack.
+- Do not introduce new frameworks or UI libraries.
+- Prefer existing patterns over new abstractions.
+- Follow the folder structure strictly.
+- Avoid unnecessary dependencies.
+- Write simple and readable code over clever code.
 
-- Los jugadores se unen mediante link de invitación
-- Escriben palabras según 5 categorías personalizables
-- El organizador puntúa manualmente las respuestas
-- Se juega por rondas con letras aleatorias
+---
 
-## Stack Tecnológico
+## Project Context
 
-- **Framework**: Next.js 16 con App Router
-- **Lenguaje**: TypeScript estricto
-- **Estilos**: Tailwind CSS v4
-- **Base de datos**: Supabase (PostgreSQL + Realtime)
-- **Deployment**: Vercel
+Multiplayer online game similar to Tutti-Frutti (Stop/Basta):
 
-## Reglas de Código
+- Players join via invitation link.
+- Players write words for 5 customizable categories.
+- Organizer manually scores answers.
+- Played in rounds with random letters.
+
+---
+
+## Tech Stack (Do Not Change)
+
+- **Framework:** Next.js 16 – App Router only
+- **Language:** TypeScript strict mode
+- **Styling:** Tailwind CSS v4
+- **Database:** Supabase (PostgreSQL + Realtime)
+- **Deployment:** Vercel
+
+Do not suggest alternative stacks.
+
+---
+
+## Code Rules
 
 ### TypeScript
 
-- Usar tipos explícitos, evitar `any`
-- Interfaces para props de componentes
-- Types para datos de Supabase
-- Nunca usar `as` sin justificación clara
+- Always use explicit types.
+- Avoid `any`.
+- Prefer `readonly` where possible.
+- Prefer union types over enums.
+- Use interfaces for component props.
+- Use generated Supabase types for DB data.
+- Never use `as` without strong justification.
+
+---
 
 ### Next.js
 
-- Usar App Router exclusivamente
-- Server Components por defecto
-- Client Components solo cuando sea necesario (`'use client'`)
-- Server Actions para mutaciones de datos
-- Evitar `use server` en archivos client
+- Use **App Router only**.
+- Do not use Pages Router.
+- Do not mix App Router and Pages Router.
+- Server Components by default.
+- Client Components only when necessary (`'use client'`).
+- Use Server Actions for mutations.
+- Avoid `use server` inside client files.
 
-### Componentes
+---
 
-- Componentes funcionales únicamente
-- Props destructuradas
-- Nombres descriptivos en PascalCase
-- Un componente por archivo (excepto sub-componentes pequeños)
-- Exportar como default si es página o componente principal
+### Components
+
+- Functional components only.
+- Destructure props.
+- Use descriptive PascalCase names.
+- One main component per file.
+- Avoid anonymous default exports.
+- Default export only for pages or main components.
+
+---
 
 ### Supabase
 
-- Usar cliente de Supabase con tipado generado
-- Realtime subscriptions para cambios en tiempo real
-- Row Level Security siempre habilitado
-- Queries optimizadas con select específico
+- Always use generated types.
+- Realtime subscriptions for shared state.
+- Row Level Security must always be enabled.
+- Never expose service role keys to the client.
+- Never bypass RLS from frontend.
+- Optimize queries with specific `select`.
 
-### Estilos
+---
 
-- Tailwind utility-first approach
-- Evitar estilos inline con style={}
-- Componentes responsivos mobile-first
-- Usar variables CSS de globals.css cuando sea posible
+### Styling
 
-### Estructura de archivos
+- Tailwind utility-first approach.
+- Avoid inline `style={}`.
+- Mobile-first responsive design.
+- Prefer CSS variables from `globals.css`.
 
-```
+---
+
+## Folder Structure
+
 app/
-  (routes)/
-    page.tsx
-    layout.tsx
-  actions/
-    *.ts (Server Actions)
+(routes)/
+page.tsx
+layout.tsx
+actions/
+\*.ts
 components/
-  ui/
-  game/
+ui/
+game/
 lib/
-  supabase/
-  types/
-  utils/
-```
+supabase/
+types/
+utils/
 
-### Nomenclatura
+- Do not create new top-level folders without reason.
 
-- Archivos: kebab-case.tsx
-- Componentes: PascalCase
-- Funciones/variables: camelCase
-- Constantes: UPPER_SNAKE_CASE
+---
+
+## Naming Conventions
+
+- Files: kebab-case.tsx
+- Components: PascalCase
+- Variables/Functions: camelCase
+- Constants: UPPER_SNAKE_CASE
 - Types/Interfaces: PascalCase
 
-### Estado y Lógica
+---
 
-- useState para estado local UI
-- Supabase Realtime para estado compartido
-- Evitar prop drilling excesivo
-- Server Actions para mutaciones
+## State and Logic
 
-## Prioridades
+- `useState` for local UI state.
+- Supabase Realtime for shared state.
+- Avoid excessive prop drilling.
+- Use Server Actions for mutations.
+- Avoid global state libraries unless strictly necessary.
 
-1. **Simplicidad**: Código claro sobre código clever
-2. **Performance**: Optimizar re-renders, usar Suspense
-3. **UX**: Loading states, error handling, feedback visual
-4. **Realtime**: Sincronización fluida entre jugadores
-5. **Accesibilidad**: Semántica HTML correcta
+---
 
-## Patrones Específicos del Juego
+## Priorities
 
-### Estados de la Sala
+1. **Simplicity** – clarity over cleverness.
+2. **Performance** – minimize re-renders, use Suspense.
+3. **UX** – loading states, errors, visual feedback.
+4. **Realtime** – smooth synchronization.
+5. **Accessibility** – semantic HTML.
 
-```typescript
+---
+
+## Game-Specific Patterns
+
+### Room States
+
+```ts
 type SalaEstado =
   | "lobby"
   | "escribiendo"
   | "puntuando"
   | "resultado_ronda"
   | "finalizada";
+Realtime Subscriptions
+Subscribe inside useEffect.
+
+Always cleanup on unmount.
+
+Handle reconnections.
+
+Use optimistic updates when appropriate.
+
+Roles
+Organizer: start game, score, finish.
+
+Player: write answers, view results.
+
+Validations
+Room code: 6 alphanumeric characters.
+
+Categories: required before starting.
+
+Answers: may be empty.
+
+Do Not
+❌ Do not use any.
+
+❌ Do not mix routers.
+
+❌ Do not use Context API for shared game state.
+
+❌ Do not create complex custom hooks prematurely.
+
+❌ Do not over-optimize before measuring.
+
+❌ Do not use heavy UI libraries.
+
+❌ Do not fetch from client when Server Actions are better.
+
+❌ Do not hardcode DB values.
+
+❌ Do not duplicate validations in client and server.
+
+Do
+✅ Validate user inputs.
+
+✅ Handle loading and error states.
+
+✅ Use descriptive logs in development.
+
+✅ Comment only when logic is not obvious.
+
+✅ Extract complex logic to utilities.
+
+✅ Think mobile-first.
+
+✅ Respect RLS and permissions.
+
+Supabase Schema (Reference)
+Main tables:
+
+salas
+
+jugadores
+
+rondas
+
+respuestas
+
+Mental Checklist Before Generating Code
+Does this need to be a Client Component?
+
+Does this data need Realtime?
+
+Is validation required?
+
+What happens if the connection fails?
+
+Does it work on mobile?
+
+Does it respect RLS and permissions?
 ```
-
-### Realtime Subscriptions
-
-- Suscribirse en useEffect con cleanup
-- Manejar reconexiones
-- Optimistic updates cuando sea apropiado
-
-### Roles
-
-- Organizador: permisos especiales (iniciar, puntuar, finalizar)
-- Jugador: solo escribir respuestas y ver resultados
-
-### Validaciones
-
-- Código de sala: 6 caracteres alfanuméricos
-- Categorías: obligatorias antes de iniciar
-- Respuestas: pueden estar vacías
-
-## No Hacer
-
-❌ No usar Context API (Supabase Realtime maneja estado compartido)
-❌ No crear custom hooks complejos prematuramente
-❌ No sobre-optimizar antes de medir
-❌ No usar librerías de UI pesadas (mantener bundle pequeño)
-❌ No hacer fetch desde client cuando Server Actions son mejor opción
-❌ No hardcodear valores que deberían venir de DB
-
-## Hacer
-
-✅ Validar inputs del usuario
-✅ Manejar estados de carga y error
-✅ Logs descriptivos en desarrollo
-✅ Comentarios solo cuando la lógica no sea obvia
-✅ Extraer lógica compleja a funciones utilities
-✅ Pensar mobile-first en diseño
-
-## Supabase Schema (Referencia)
-
-### Tablas principales
-
-- `salas`: id, codigo, organizador_id, categorias[], estado, created_at
-- `jugadores`: id, sala_id, nombre, es_organizador, listo, created_at
-- `rondas`: id, sala_id, numero, letra, estado, created_at
-- `respuestas`: id, ronda_id, jugador_id, categoria_index, texto, puntos
-
-## Testing Mental
-
-Antes de generar código, considerar:
-
-1. ¿Esto necesita ser Client Component?
-2. ¿Los datos necesitan Realtime?
-3. ¿Hay validación necesaria?
-4. ¿Qué pasa si falla la conexión?
-5. ¿Funciona en mobile?
