@@ -1,69 +1,5 @@
+// app/actions.ts
 "use server";
-import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
-
-// Guardar respuestas y marcar jugador como listo
-interface GuardarRespuestasInput {
-  salaId: string;
-  rondaId: string;
-  jugadorId: string;
-  respuestas: string[];
-  categorias: string[];
-}
-
-export async function guardarRespuestas({
-  salaId,
-  rondaId,
-  jugadorId,
-  respuestas,
-  categorias,
-}: GuardarRespuestasInput) {
-  const supabase = await createClient();
-  // Upsert respuestas (una por categoría)
-  const upserts = categorias.map((_, idx) => ({
-    sala_id: salaId,
-    ronda_id: rondaId,
-    jugador_id: jugadorId,
-    categoria_index: idx,
-    texto: respuestas[idx] || "",
-  }));
-  const { error: upsertError } = await supabase
-    .from("respuestas")
-    .upsert(upserts, {
-      onConflict: ["ronda_id", "jugador_id", "categoria_index"],
-    });
-  if (upsertError) {
-    console.error("Error al guardar respuestas:", upsertError);
-    throw new Error("No se pudieron guardar las respuestas");
-  }
-  // Marcar jugador como listo
-  const { error: listoError } = await supabase
-    .from("jugadores")
-    .update({ listo: true })
-    .eq("id", jugadorId)
-    .eq("sala_id", salaId);
-  if (listoError) {
-    console.error("Error al marcar listo:", listoError);
-    throw new Error("No se pudo marcar como listo");
-  }
-}
-
-// Terminar ronda (solo organizador)
-interface TerminarRondaInput {
-  rondaId: string;
-}
-
-export async function terminarRonda({ rondaId }: TerminarRondaInput) {
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("rondas")
-    .update({ estado: "puntuando" })
-    .eq("id", rondaId);
-  if (error) {
-    console.error("Error al terminar ronda:", error);
-    throw new Error("No se pudo terminar la ronda");
-  }
-}
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 
@@ -74,6 +10,11 @@ function randomCode(): string {
     code += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return code;
+}
+
+function randomLetter(): string {
+  const letters = "ABCDEFGHIJLMNOPQRSTUVXYZ"; // Sin K, W, Ñ
+  return letters.charAt(Math.floor(Math.random() * letters.length));
 }
 
 export async function crearSala() {
@@ -89,7 +30,7 @@ export async function crearSala() {
       .insert([
         {
           codigo_invitacion,
-          organizador_id: UUID_NULO, // temporal, se actualiza luego
+          organizador_id: UUID_NULO,
           categorias: [],
           estado: "lobby",
         },
@@ -158,6 +99,7 @@ export async function unirseSala(formData: FormData) {
 
   redirect(`/unirse/${codigo}`);
 }
+
 export async function unirseConNombre(formData: FormData) {
   const nombre = (formData.get("nombre") as string)?.trim();
   const codigo = (formData.get("codigo") as string)?.toUpperCase();
@@ -185,13 +127,6 @@ export async function unirseConNombre(formData: FormData) {
   if (jugadorError || !jugador) throw new Error("No se pudo unir");
 
   redirect(`/lobby/${sala.id}?jugadorId=${jugador.id}`);
-}
-
-// app/actions.ts (agregar al final)
-
-function randomLetter(): string {
-  const letters = "ABCDEFGHIJLMNOPQRSTUVXYZ"; // Sin K, W, Ñ
-  return letters.charAt(Math.floor(Math.random() * letters.length));
 }
 
 export async function iniciarJuego(formData: FormData) {
@@ -238,4 +173,72 @@ export async function iniciarJuego(formData: FormData) {
   ]);
 
   if (rondaError) throw new Error("No se pudo crear la ronda");
+}
+
+// Guardar respuestas y marcar jugador como listo
+interface GuardarRespuestasInput {
+  salaId: string;
+  rondaId: string;
+  jugadorId: string;
+  respuestas: string[];
+  categorias: string[];
+}
+
+export async function guardarRespuestas({
+  salaId,
+  rondaId,
+  jugadorId,
+  respuestas,
+  categorias,
+}: GuardarRespuestasInput) {
+  const supabase = await createClient();
+
+  // Upsert respuestas (una por categoría)
+  const upserts = categorias.map((_, idx) => ({
+    ronda_id: rondaId,
+    jugador_id: jugadorId,
+    categoria_index: idx,
+    texto: respuestas[idx] || "",
+  }));
+
+  const { error: upsertError } = await supabase
+    .from("respuestas")
+    .upsert(upserts, {
+      onConflict: "ronda_id,jugador_id,categoria_index",
+    });
+
+  if (upsertError) {
+    console.error("Error al guardar respuestas:", upsertError);
+    throw new Error("No se pudieron guardar las respuestas");
+  }
+
+  // Marcar jugador como listo
+  const { error: listoError } = await supabase
+    .from("jugadores")
+    .update({ listo: true })
+    .eq("id", jugadorId)
+    .eq("sala_id", salaId);
+
+  if (listoError) {
+    console.error("Error al marcar listo:", listoError);
+    throw new Error("No se pudo marcar como listo");
+  }
+}
+
+// Terminar ronda (solo organizador)
+interface TerminarRondaInput {
+  rondaId: string;
+}
+
+export async function terminarRonda({ rondaId }: TerminarRondaInput) {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("rondas")
+    .update({ estado: "puntuando" })
+    .eq("id", rondaId);
+
+  if (error) {
+    console.error("Error al terminar ronda:", error);
+    throw new Error("No se pudo terminar la ronda");
+  }
 }

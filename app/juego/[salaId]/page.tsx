@@ -1,7 +1,7 @@
+// app/juego/[salaId]/page.tsx
 "use client";
 import { use, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
-import { useRouter } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { guardarRespuestas, terminarRonda } from "@/app/actions";
 import type { SalaEstado } from "@/types/supabase";
@@ -30,6 +30,7 @@ export default function JuegoPage({ params }: JuegoPageProps) {
   const supabase = useMemo(() => createBrowserClient(), []);
 
   const [jugadorId, setJugadorId] = useState<string | null>(null);
+  const [sala, setSala] = useState<{
     id: string;
     categorias: string[];
     estado: SalaEstado;
@@ -42,15 +43,16 @@ export default function JuegoPage({ params }: JuegoPageProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
-  const [jugadorId, setJugadorId] = useState<string | null>(null);
+
   // Obtener jugadorId de searchParams o localStorage
   useEffect(() => {
     if (typeof window === "undefined") return;
     const param = searchParams.get("jugadorId");
     const stored = localStorage.getItem("jugadorId");
+
     if (param) {
       setJugadorId(param);
-      if (!stored) localStorage.setItem("jugadorId", param);
+      localStorage.setItem("jugadorId", param);
     } else if (stored) {
       setJugadorId(stored);
     }
@@ -60,18 +62,21 @@ export default function JuegoPage({ params }: JuegoPageProps) {
   useEffect(() => {
     async function fetchSalaRondaJugadores() {
       setLoading(true);
+
       // Sala
       const { data: salaData } = await supabase
         .from("salas")
         .select("id, categorias, estado, organizador_id")
         .eq("id", salaId)
         .single();
+
       if (!salaData) {
         setError("Sala no encontrada");
         setLoading(false);
         return;
       }
       setSala(salaData);
+
       // Ronda actual
       const { data: rondaData } = await supabase
         .from("rondas")
@@ -80,27 +85,32 @@ export default function JuegoPage({ params }: JuegoPageProps) {
         .order("numero_ronda", { ascending: false })
         .limit(1)
         .single();
+
       if (!rondaData) {
         setError("Ronda no encontrada");
         setLoading(false);
         return;
       }
       setRonda(rondaData);
+
       // Jugadores
       const { data: jugadoresData } = await supabase
         .from("jugadores")
         .select("id, nombre, es_organizador, listo")
         .eq("sala_id", salaId)
         .order("created_at", { ascending: true });
+
       setJugadores(jugadoresData || []);
       setLoading(false);
     }
+
     fetchSalaRondaJugadores();
   }, [salaId, supabase]);
 
   // Realtime subscripciones
   useEffect(() => {
     if (!salaId || !ronda?.id) return;
+
     // Jugadores
     const jugadoresSub = supabase
       .channel(`jugadores-sala-${salaId}`)
@@ -122,6 +132,7 @@ export default function JuegoPage({ params }: JuegoPageProps) {
         },
       )
       .subscribe();
+
     // Ronda
     const rondaSub = supabase
       .channel(`ronda-${ronda.id}`)
@@ -141,6 +152,7 @@ export default function JuegoPage({ params }: JuegoPageProps) {
         },
       )
       .subscribe();
+
     return () => {
       supabase.removeChannel(jugadoresSub);
       supabase.removeChannel(rondaSub);
@@ -165,8 +177,10 @@ export default function JuegoPage({ params }: JuegoPageProps) {
       );
       return;
     }
+
     setEnviando(true);
     setError(null);
+
     try {
       await guardarRespuestas({
         salaId,
@@ -187,6 +201,7 @@ export default function JuegoPage({ params }: JuegoPageProps) {
   async function handleTerminarRonda() {
     setEnviando(true);
     setError(null);
+
     try {
       await terminarRonda({ rondaId: ronda!.id });
     } catch (e: unknown) {
@@ -204,7 +219,8 @@ export default function JuegoPage({ params }: JuegoPageProps) {
       </main>
     );
   }
-  if (error) {
+
+  if (error && (!sala || !ronda)) {
     return (
       <main className="flex min-h-screen items-center justify-center">
         <div className="bg-white rounded-lg shadow p-8 text-center">
@@ -213,7 +229,9 @@ export default function JuegoPage({ params }: JuegoPageProps) {
       </main>
     );
   }
+
   if (!sala || !ronda) return null;
+
   return (
     <main className="flex min-h-screen items-center justify-center p-4">
       <div className="w-full max-w-md flex flex-col gap-8">
@@ -223,6 +241,7 @@ export default function JuegoPage({ params }: JuegoPageProps) {
             {ronda.letra}
           </div>
         </div>
+
         <div className="bg-white rounded-lg shadow p-6">
           <div className="font-semibold mb-3">Tus respuestas</div>
           <form
@@ -241,11 +260,16 @@ export default function JuegoPage({ params }: JuegoPageProps) {
                   onChange={(e) => handleRespuesta(idx, e.target.value)}
                   maxLength={30}
                   disabled={listo}
-                  className="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  className="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:bg-gray-100"
                   placeholder={`Respuesta para ${cat}`}
                 />
               </div>
             ))}
+
+            {error && (
+              <div className="text-red-600 text-sm text-center">{error}</div>
+            )}
+
             <div className="flex items-center justify-between mt-2">
               <span className="text-gray-600 text-sm">
                 {listos} de {total} listos
@@ -258,6 +282,7 @@ export default function JuegoPage({ params }: JuegoPageProps) {
                 {listo ? "Esperando..." : "Listo"}
               </button>
             </div>
+
             {esOrganizador && (
               <button
                 type="button"

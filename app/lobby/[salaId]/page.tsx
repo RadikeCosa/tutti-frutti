@@ -1,22 +1,36 @@
 // app/lobby/[salaId]/page.tsx
 "use client";
 import { use, useEffect, useState, useMemo } from "react";
-import { useSearchParams } from "next/navigation";
-import { useRouter } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { iniciarJuego } from "@/app/actions";
 import type { SalaEstado } from "@/types/supabase";
+
+type JugadorData = { id: string; nombre: string; es_organizador: boolean };
 
 interface LobbyPageProps {
   params: Promise<{ salaId: string }>;
 }
 
+export default function LobbyPage({ params }: LobbyPageProps) {
   const { salaId } = use(params);
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = useMemo(() => createBrowserClient(), []);
 
-  const [jugadorId, setJugadorId] = useState<string | null>(null);
+  // Obtener jugadorId de searchParams o localStorage (sin useEffect)
+  const jugadorId = useMemo(() => {
+    if (typeof window === "undefined") return null;
+
+    const param = searchParams.get("jugadorId");
+    const stored = localStorage.getItem("jugadorId");
+
+    if (param) {
+      localStorage.setItem("jugadorId", param);
+      return param;
+    }
+    return stored;
+  }, [searchParams]);
 
   const [sala, setSala] = useState<{
     id: string;
@@ -26,35 +40,17 @@ interface LobbyPageProps {
     organizador_id: string;
   } | null>(null);
 
-  const [jugadores, setJugadores] = useState<
-    Array<{
-      id: string;
-      nombre: string;
-      es_organizador: boolean;
-    }>
-  >([]);
-
+  const [jugadores, setJugadores] = useState<JugadorData[]>([]);
   const [categorias, setCategorias] = useState<string[]>(["", "", "", "", ""]);
   const [isOrganizador, setIsOrganizador] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [iniciando, setIniciando] = useState(false);
 
-  // Obtener jugadorId de searchParams o localStorage
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const param = searchParams.get("jugadorId");
-    const stored = localStorage.getItem("jugadorId");
-    if (param) {
-      setJugadorId(param);
-      if (!stored) localStorage.setItem("jugadorId", param);
-    } else if (stored) {
-      setJugadorId(stored);
-    }
-  }, [searchParams]);
-
   // Obtener sala y jugadores al montar
   useEffect(() => {
+    if (!jugadorId) return;
+
     async function fetchSalaYJugadores() {
       setLoading(true);
 
@@ -86,15 +82,15 @@ interface LobbyPageProps {
 
       setJugadores(jugadoresData || []);
 
-      // Verificar si soy organizador (primer jugador que es organizador)
-      const yo = jugadoresData?.find((j: { id: string }) => j.id === (param || stored));
+      // Verificar si soy organizador
+      const yo = jugadoresData?.find((j: JugadorData) => j.id === jugadorId);
       setIsOrganizador(!!yo?.es_organizador);
 
       setLoading(false);
     }
 
     fetchSalaYJugadores();
-  }, [salaId]);
+  }, [salaId, jugadorId, supabase]);
 
   // Realtime subscripciones
   useEffect(() => {
@@ -140,7 +136,7 @@ interface LobbyPageProps {
           });
 
           if (newSala.estado === "jugando") {
-            router.push(`/juego/${salaId}`);
+            router.push(`/juego/${salaId}?jugadorId=${jugadorId}`);
           }
         },
       )
@@ -150,7 +146,7 @@ interface LobbyPageProps {
       supabase.removeChannel(jugadoresSub);
       supabase.removeChannel(salaSub);
     };
-  }, [salaId, router]);
+  }, [salaId, router, supabase, jugadorId]);
 
   function handleCategoriaChange(idx: number, value: string) {
     setCategorias((prev) => prev.map((cat, i) => (i === idx ? value : cat)));
@@ -186,7 +182,7 @@ interface LobbyPageProps {
     }
   }
 
-  if (loading) {
+  if (loading || !jugadorId) {
     return (
       <main className="flex min-h-screen items-center justify-center">
         <div className="text-center">Cargando...</div>
