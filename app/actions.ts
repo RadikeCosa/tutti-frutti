@@ -1,6 +1,6 @@
 // app/actions.ts
 "use server";
-import { createClient } from "@/lib/supabase";
+import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 
 function randomCode(): string {
@@ -16,46 +16,62 @@ export async function crearSala() {
   const supabase = await createClient();
   const codigo_invitacion = randomCode();
 
-  // Crear sala con datos mínimos (organizador_id temporal, se actualiza luego)
-  const { data: sala, error: salaError } = await supabase
-    .from("salas")
-    .insert([
-      {
-        codigo_invitacion,
-        organizador_id: "", // temporal, se actualiza luego
-        categorias: [],
-        estado: "lobby",
-      },
-    ])
-    .select()
-    .single();
-
-  if (salaError || !sala) throw new Error("No se pudo crear la sala");
+  // Crear sala con organizador_id temporal (UUID nulo válido)
+  const UUID_NULO = "00000000-0000-0000-0000-000000000000";
+  let sala;
+  try {
+    const { data, error } = await supabase
+      .from("salas")
+      .insert([
+        {
+          codigo_invitacion,
+          organizador_id: UUID_NULO, // temporal, se actualiza luego
+          categorias: [],
+          estado: "lobby",
+        },
+      ])
+      .select()
+      .single();
+    if (error || !data) throw error || new Error("No se pudo crear la sala");
+    sala = data;
+  } catch (e) {
+    console.error("Error al crear sala:", e);
+    throw new Error("No se pudo crear la sala");
+  }
 
   // Crear organizador con sala_id
-  const { data: jugador, error: jugadorError } = await supabase
-    .from("jugadores")
-    .insert([
-      {
-        sala_id: sala.id,
-        nombre: "Organizador",
-        es_organizador: true,
-      },
-    ])
-    .select()
-    .single();
-
-  if (jugadorError || !jugador)
+  let jugador;
+  try {
+    const { data, error } = await supabase
+      .from("jugadores")
+      .insert([
+        {
+          sala_id: sala.id,
+          nombre: "Organizador",
+          es_organizador: true,
+        },
+      ])
+      .select()
+      .single();
+    if (error || !data)
+      throw error || new Error("No se pudo crear el organizador");
+    jugador = data;
+  } catch (e) {
+    console.error("Error al crear organizador:", e);
     throw new Error("No se pudo crear el organizador");
+  }
 
-  // Actualizar sala con el id del organizador
-  const { error: updateSalaError } = await supabase
-    .from("salas")
-    .update({ organizador_id: jugador.id })
-    .eq("id", sala.id);
-
-  if (updateSalaError)
+  // Actualizar sala con el id real del organizador
+  try {
+    const { error } = await supabase
+      .from("salas")
+      .update({ organizador_id: jugador.id })
+      .eq("id", sala.id);
+    if (error) throw error;
+  } catch (e) {
+    console.error("Error al asociar organizador a la sala:", e);
     throw new Error("No se pudo asociar el organizador a la sala");
+  }
 
   redirect(`/lobby/${sala.id}`);
 }

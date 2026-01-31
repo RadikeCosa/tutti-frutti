@@ -1,22 +1,19 @@
+// app/lobby/[salaId]/page.tsx
 "use client";
-import { useEffect, useState, useRef } from "react";
+import { use, useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { createBrowserClient } from "@/lib/supabase";
-import type { Database, SalaEstado } from "@/types/supabase";
+import { createBrowserClient } from "@/lib/supabase/client";
+import { iniciarJuego } from "@/app/actions";
+import type { SalaEstado } from "@/types/supabase";
 
 interface LobbyPageProps {
-  params: { salaId: string };
-}
-
-function randomLetter() {
-  const letters = "ABCDEFGHIJKLMNÑOPQRSTUVWXYZ";
-  return letters[Math.floor(Math.random() * letters.length)];
+  params: Promise<{ salaId: string }>;
 }
 
 export default function LobbyPage({ params }: LobbyPageProps) {
-  const salaId = params.salaId;
+  const { salaId } = use(params);
   const router = useRouter();
-  const supabase = useRef(createBrowserClient<Database>());
+  const supabase = useMemo(() => createBrowserClient(), []);
 
   const [sala, setSala] = useState<{
     id: string;
@@ -25,6 +22,7 @@ export default function LobbyPage({ params }: LobbyPageProps) {
     estado: SalaEstado;
     organizador_id: string;
   } | null>(null);
+
   const [jugadores, setJugadores] = useState<
     Array<{
       id: string;
@@ -32,6 +30,7 @@ export default function LobbyPage({ params }: LobbyPageProps) {
       es_organizador: boolean;
     }>
   >([]);
+
   const [categorias, setCategorias] = useState<string[]>(["", "", "", "", ""]);
   const [isOrganizador, setIsOrganizador] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -40,46 +39,54 @@ export default function LobbyPage({ params }: LobbyPageProps) {
 
   // Obtener sala y jugadores al montar
   useEffect(() => {
-    let ignore = false;
     async function fetchSalaYJugadores() {
       setLoading(true);
-      const { data: salaData } = await supabase.current
+
+      const { data: salaData } = await supabase
         .from("salas")
         .select("id, codigo_invitacion, categorias, estado, organizador_id")
         .eq("id", salaId)
         .single();
+
       if (!salaData) {
         setError("Sala no encontrada");
         setLoading(false);
         return;
       }
+
       setSala(salaData);
       setCategorias(
         salaData.categorias?.length === 5
           ? salaData.categorias
           : ["", "", "", "", ""],
       );
+
       // Obtener jugadores
-      const { data: jugadoresData } = await supabase.current
+      const { data: jugadoresData } = await supabase
         .from("jugadores")
-        .select("id, nombre, es_organizador, sala_id")
-        .eq("sala_id", salaId);
+        .select("id, nombre, es_organizador")
+        .eq("sala_id", salaId)
+        .order("created_at", { ascending: true });
+
       setJugadores(jugadoresData || []);
-      // ¿Soy organizador? (por cookie localStorage)
-      const miId = localStorage.getItem("jugadorId");
-      setIsOrganizador(!!miId && miId === salaData.organizador_id);
+
+      // Verificar si soy organizador (primer jugador que es organizador)
+      const jugadorOrganizador = jugadoresData?.find(
+        (j: { es_organizador: boolean }) => j.es_organizador,
+      );
+      setIsOrganizador(!!jugadorOrganizador);
+
       setLoading(false);
     }
+
     fetchSalaYJugadores();
-    return () => {
-      ignore = true;
-    };
   }, [salaId]);
 
   // Realtime subscripciones
   useEffect(() => {
     if (!salaId) return;
-    const jugadoresSub = supabase.current
+
+    const jugadoresSub = supabase
       .channel(`jugadores-sala-${salaId}`)
       .on(
         "postgres_changes",
@@ -89,16 +96,18 @@ export default function LobbyPage({ params }: LobbyPageProps) {
           table: "jugadores",
           filter: `sala_id=eq.${salaId}`,
         },
-        (payload) => {
-          supabase.current
+        async () => {
+          const { data } = await supabase
             .from("jugadores")
-            .select("id, nombre, es_organizador, sala_id")
+            .select("id, nombre, es_organizador")
             .eq("sala_id", salaId)
-            .then(({ data }) => setJugadores(data || []));
+            .order("created_at", { ascending: true });
+          setJugadores(data || []);
         },
       )
       .subscribe();
-    const salaSub = supabase.current
+
+    const salaSub = supabase
       .channel(`sala-${salaId}`)
       .on(
         "postgres_changes",
@@ -108,52 +117,59 @@ export default function LobbyPage({ params }: LobbyPageProps) {
           table: "salas",
           filter: `id=eq.${salaId}`,
         },
-        (payload) => {
-          const newSala = payload.new as any;
-          setSala((prev) => (prev ? { ...prev, ...newSala } : newSala));
+        (payload: { new: unknown }) => {
+          type SalaUpdate = { estado: SalaEstado; [key: string]: unknown };
+          const newSala = payload.new as SalaUpdate;
+          setSala((prev) => {
+            if (!prev) return prev;
+            return { ...prev, ...newSala };
+          });
+
           if (newSala.estado === "jugando") {
-            router.replace(`/juego/${salaId}`);
+            router.push(`/juego/${salaId}`);
           }
         },
       )
       .subscribe();
+
     return () => {
-      supabase.current.removeChannel(jugadoresSub);
-      supabase.current.removeChannel(salaSub);
+      supabase.removeChannel(jugadoresSub);
+      supabase.removeChannel(salaSub);
     };
   }, [salaId, router]);
 
-  // Handler categorías
   function handleCategoriaChange(idx: number, value: string) {
     setCategorias((prev) => prev.map((cat, i) => (i === idx ? value : cat)));
   }
 
-  // Handler iniciar juego
-  async function handleIniciarJuego() {
+  async function handleIniciarJuego(e: React.FormEvent) {
+    e.preventDefault();
     setIniciando(true);
     setError(null);
+
     if (jugadores.length < 2) {
       setError("Se requieren al menos 2 jugadores");
       setIniciando(false);
       return;
     }
+
     if (categorias.some((c) => !c.trim())) {
       setError("Completa las 5 categorías");
       setIniciando(false);
       return;
     }
-    // Llamar server action
+
     try {
-      const res = await fetch("/lobby/" + salaId + "/actions", {
-        method: "POST",
-        body: JSON.stringify({ categorias }),
-        headers: { "Content-Type": "application/json" },
-      });
-      if (!res.ok) throw new Error("Error al iniciar juego");
-    } catch (e: any) {
-      setError(e.message);
+      const formData = new FormData();
+      formData.append("salaId", salaId);
+      formData.append("categorias", JSON.stringify(categorias));
+
+      await iniciarJuego(formData);
+    } catch (e: unknown) {
+      const error = e instanceof Error ? e : new Error("Error desconocido");
+      setError(error.message || "Error al iniciar juego");
+      setIniciando(false);
     }
-    setIniciando(false);
   }
 
   if (loading) {
@@ -163,7 +179,8 @@ export default function LobbyPage({ params }: LobbyPageProps) {
       </main>
     );
   }
-  if (error) {
+
+  if (error && !sala) {
     return (
       <main className="flex min-h-screen items-center justify-center">
         <div className="bg-white rounded-lg shadow p-8 text-center">
@@ -172,25 +189,29 @@ export default function LobbyPage({ params }: LobbyPageProps) {
       </main>
     );
   }
+
   if (!sala) return null;
 
   return (
-    <main className="flex min-h-screen items-center justify-center">
+    <main className="flex min-h-screen items-center justify-center p-4">
       <div className="w-full max-w-md flex flex-col gap-8">
         <div className="flex flex-col items-center gap-2">
           <div className="text-lg font-medium">Código de invitación</div>
-          <div className="text-3xl font-mono tracking-widest bg-gray-100 rounded px-4 py-2 select-all mb-2">
+          <div className="text-3xl font-mono tracking-widest bg-gray-100 rounded px-4 py-2 select-all">
             {sala.codigo_invitacion}
           </div>
         </div>
-        <div>
-          <div className="font-semibold mb-2">Jugadores</div>
-          <ul className="bg-gray-50 rounded p-4 flex flex-col gap-2">
+
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="font-semibold mb-3">
+            Jugadores ({jugadores.length})
+          </div>
+          <ul className="flex flex-col gap-2">
             {jugadores.map((j) => (
               <li key={j.id} className="flex items-center gap-2">
                 <span>{j.nombre}</span>
                 {j.es_organizador && (
-                  <span className="text-xs bg-blue-200 text-blue-800 rounded px-2 py-0.5 ml-2">
+                  <span className="text-xs bg-blue-200 text-blue-800 rounded px-2 py-0.5">
                     Organizador
                   </span>
                 )}
@@ -198,35 +219,44 @@ export default function LobbyPage({ params }: LobbyPageProps) {
             ))}
           </ul>
         </div>
+
         {isOrganizador && (
           <form
             className="flex flex-col gap-4 bg-white rounded-lg shadow p-6"
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleIniciarJuego();
-            }}
+            onSubmit={handleIniciarJuego}
           >
-            <div className="font-semibold mb-2">Categorías</div>
+            <div className="font-semibold mb-2">Configurar categorías</div>
             {categorias.map((cat, idx) => (
               <input
                 key={idx}
                 type="text"
                 value={cat}
                 onChange={(e) => handleCategoriaChange(idx, e.target.value)}
-                maxLength={20}
+                maxLength={30}
                 required
-                className="border border-gray-300 rounded px-3 py-2 text-lg text-center focus:outline-none focus:ring-2 focus:ring-blue-400"
+                className="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
                 placeholder={`Categoría ${idx + 1}`}
               />
             ))}
+
+            {error && sala && (
+              <div className="text-red-600 text-sm text-center">{error}</div>
+            )}
+
             <button
               type="submit"
-              className="bg-blue-600 text-white font-semibold py-2 rounded hover:bg-blue-700 transition disabled:opacity-50"
+              className="bg-blue-600 text-white font-semibold py-3 rounded hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={iniciando || categorias.some((c) => !c.trim())}
             >
-              Iniciar Juego
+              {iniciando ? "Iniciando..." : "Iniciar Juego"}
             </button>
           </form>
+        )}
+
+        {!isOrganizador && (
+          <div className="text-center text-gray-600">
+            Esperando que el organizador inicie el juego...
+          </div>
         )}
       </div>
     </main>
