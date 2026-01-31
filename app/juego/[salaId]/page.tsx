@@ -1,5 +1,6 @@
 "use client";
 import { use, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { guardarRespuestas, terminarRonda } from "@/app/actions";
@@ -25,9 +26,10 @@ interface Jugador {
 export default function JuegoPage({ params }: JuegoPageProps) {
   const { salaId } = use(params);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = useMemo(() => createBrowserClient(), []);
 
-  const [sala, setSala] = useState<{
+  const [jugadorId, setJugadorId] = useState<string | null>(null);
     id: string;
     categorias: string[];
     estado: SalaEstado;
@@ -40,6 +42,19 @@ export default function JuegoPage({ params }: JuegoPageProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
+  const [jugadorId, setJugadorId] = useState<string | null>(null);
+  // Obtener jugadorId de searchParams o localStorage
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const param = searchParams.get("jugadorId");
+    const stored = localStorage.getItem("jugadorId");
+    if (param) {
+      setJugadorId(param);
+      if (!stored) localStorage.setItem("jugadorId", param);
+    } else if (stored) {
+      setJugadorId(stored);
+    }
+  }, [searchParams]);
 
   // Obtener sala, ronda y jugadores
   useEffect(() => {
@@ -135,7 +150,7 @@ export default function JuegoPage({ params }: JuegoPageProps) {
   // Contador de listos
   const listos = jugadores.filter((j) => j.listo).length;
   const total = jugadores.length;
-  const yo = jugadores[0]; // Suponiendo que el primer jugador es el actual (ajustar según auth real)
+  const yo = jugadores.find((j) => j.id === jugadorId) || null;
   const esOrganizador = yo?.es_organizador;
 
   // Handlers
@@ -144,6 +159,12 @@ export default function JuegoPage({ params }: JuegoPageProps) {
   }
 
   async function handleListo() {
+    if (!yo) {
+      setError(
+        "No se encontró tu jugador. Refresca la página o vuelve a unirte.",
+      );
+      return;
+    }
     setEnviando(true);
     setError(null);
     try {
@@ -153,7 +174,6 @@ export default function JuegoPage({ params }: JuegoPageProps) {
         jugadorId: yo.id,
         respuestas,
         categorias: sala!.categorias,
-        letra: ronda!.letra,
       });
       setListo(true);
     } catch (e: unknown) {

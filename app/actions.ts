@@ -1,3 +1,7 @@
+"use server";
+import { createClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
+
 // Guardar respuestas y marcar jugador como listo
 interface GuardarRespuestasInput {
   salaId: string;
@@ -5,7 +9,6 @@ interface GuardarRespuestasInput {
   jugadorId: string;
   respuestas: string[];
   categorias: string[];
-  letra: string;
 }
 
 export async function guardarRespuestas({
@@ -14,21 +17,21 @@ export async function guardarRespuestas({
   jugadorId,
   respuestas,
   categorias,
-  letra,
 }: GuardarRespuestasInput) {
   const supabase = await createClient();
   // Upsert respuestas (una por categoría)
-  const upserts = categorias.map((categoria, idx) => ({
+  const upserts = categorias.map((_, idx) => ({
     sala_id: salaId,
     ronda_id: rondaId,
     jugador_id: jugadorId,
-    categoria,
-    letra,
-    respuesta: respuestas[idx] || "",
+    categoria_index: idx,
+    texto: respuestas[idx] || "",
   }));
   const { error: upsertError } = await supabase
     .from("respuestas")
-    .upsert(upserts, { onConflict: ["ronda_id", "jugador_id", "categoria"] });
+    .upsert(upserts, {
+      onConflict: ["ronda_id", "jugador_id", "categoria_index"],
+    });
   if (upsertError) {
     console.error("Error al guardar respuestas:", upsertError);
     throw new Error("No se pudieron guardar las respuestas");
@@ -61,8 +64,6 @@ export async function terminarRonda({ rondaId }: TerminarRondaInput) {
     throw new Error("No se pudo terminar la ronda");
   }
 }
-// app/actions.ts
-("use server");
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 
@@ -136,7 +137,7 @@ export async function crearSala() {
     throw new Error("No se pudo asociar el organizador a la sala");
   }
 
-  redirect(`/lobby/${sala.id}`);
+  redirect(`/lobby/${sala.id}?jugadorId=${jugador.id}`);
 }
 
 export async function unirseSala(formData: FormData) {
@@ -175,13 +176,15 @@ export async function unirseConNombre(formData: FormData) {
   if (!sala) throw new Error("Sala no encontrada");
   if (sala.estado !== "lobby") throw new Error("Partida en curso");
 
-  const { error: jugadorError } = await supabase
+  const { data: jugador, error: jugadorError } = await supabase
     .from("jugadores")
-    .insert([{ sala_id: sala.id, nombre }]);
+    .insert([{ sala_id: sala.id, nombre }])
+    .select()
+    .single();
 
-  if (jugadorError) throw new Error("No se pudo unir");
+  if (jugadorError || !jugador) throw new Error("No se pudo unir");
 
-  redirect(`/lobby/${sala.id}`);
+  redirect(`/lobby/${sala.id}?jugadorId=${jugador.id}`);
 }
 
 // app/actions.ts (agregar al final)
