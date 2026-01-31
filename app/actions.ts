@@ -242,3 +242,64 @@ export async function terminarRonda({ rondaId }: TerminarRondaInput) {
     throw new Error("No se pudo terminar la ronda");
   }
 }
+
+// --- Server Actions para puntuación ---
+interface AsignarPuntosInput {
+  readonly respuestaId: string;
+  readonly puntos: number;
+}
+
+export async function asignarPuntos(puntajes: AsignarPuntosInput[]) {
+  const supabase = await createClient();
+  for (const { respuestaId, puntos } of puntajes) {
+    const { error } = await supabase
+      .from("respuestas")
+      .update({ puntos })
+      .eq("id", respuestaId);
+    if (error) {
+      console.error("Error al asignar puntos:", error);
+      throw new Error("No se pudo asignar puntos");
+    }
+  }
+  // No redireccionar, solo retornar
+}
+
+interface FinalizarPuntuacionInput {
+  readonly salaId: string;
+  readonly rondaId: string;
+}
+
+export async function finalizarPuntuacion({
+  salaId,
+  rondaId,
+}: FinalizarPuntuacionInput) {
+  const supabase = await createClient();
+  // Marcar ronda como completada
+  const { error: rondaError } = await supabase
+    .from("rondas")
+    .update({ estado: "completada" })
+    .eq("id", rondaId);
+  if (rondaError) {
+    console.error("Error al finalizar puntuación (ronda):", rondaError);
+    throw new Error("No se pudo finalizar la ronda");
+  }
+  // Cambiar estado de la sala
+  const { error: salaError } = await supabase
+    .from("salas")
+    .update({ estado: "resultado_ronda" })
+    .eq("id", salaId);
+  if (salaError) {
+    console.error("Error al actualizar sala:", salaError);
+    throw new Error("No se pudo actualizar la sala");
+  }
+  // Marcar todos los jugadores como no listos
+  const { error: jugadoresError } = await supabase
+    .from("jugadores")
+    .update({ listo: false })
+    .eq("sala_id", salaId);
+  if (jugadoresError) {
+    console.error("Error al actualizar jugadores:", jugadoresError);
+    throw new Error("No se pudo actualizar jugadores");
+  }
+  redirect(`/resultados/${salaId}/${rondaId}`);
+}
