@@ -227,8 +227,7 @@ export default function LobbyPage({ params }: LobbyPageProps) {
               </li>
             ))}
           </ul>
-          // Animación fadein para la lista de jugadores import
-          "./lobby-animations.css";
+          {/* Animación fadein para la lista de jugadores está en lobby-animations.css */}
         </div>
 
         {isOrganizador && (

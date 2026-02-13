@@ -17,7 +17,11 @@ function randomLetter(): string {
   return letters.charAt(Math.floor(Math.random() * letters.length));
 }
 
-export async function crearSala() {
+export async function crearSala(formData: FormData) {
+  const nombre = (formData.get("nombre") as string)?.trim();
+  if (!nombre || nombre.length < 2 || nombre.length > 20) {
+    throw new Error("Nombre inválido");
+  }
   const supabase = await createClient();
   const codigo_invitacion = randomCode();
 
@@ -44,7 +48,7 @@ export async function crearSala() {
     throw new Error("No se pudo crear la sala");
   }
 
-  // Crear organizador con sala_id
+  // Crear organizador con sala_id y nombre personalizado
   let jugador;
   try {
     const { data, error } = await supabase
@@ -52,7 +56,7 @@ export async function crearSala() {
       .insert([
         {
           sala_id: sala.id,
-          nombre: "Organizador",
+          nombre,
           es_organizador: true,
         },
       ])
