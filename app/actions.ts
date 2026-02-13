@@ -1,7 +1,20 @@
-// app/actions.ts
 "use server";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
+
+// Eliminar una sugerencia de categoría por id
+export async function eliminarCategoriaSugerida(
+  id: string,
+): Promise<{ success: boolean; error?: string }> {
+  if (!id) return { success: false, error: "ID inválido" };
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("categorias_sugeridas")
+    .delete()
+    .eq("id", id);
+  if (error) return { success: false, error: error.message };
+  return { success: true };
+}
 
 function randomCode(): string {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -451,4 +464,35 @@ export async function finalizarJuego({
     throw new Error("No se pudo finalizar el juego");
   }
   redirect(`/ranking/${salaId}`);
+}
+
+// Guardar una sugerencia de categoría para el admin
+export async function guardarCategoriaSugerida(
+  nombre: string,
+): Promise<{ success: boolean; error?: string }> {
+  if (!nombre.trim()) {
+    return { success: false, error: "Datos inválidos" };
+  }
+  const supabase = await createClient();
+  // Usar UUID dummy para creador_id si no hay auth
+  const creador_id = "00000000-0000-0000-0000-000000000000";
+  const { error } = await supabase
+    .from("categorias_sugeridas")
+    .insert([{ nombre: nombre.trim(), creador_id }]);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+  return { success: true };
+}
+
+// Obtener sugerencias de categorías para el admin
+// Obtener todas las sugerencias de categorías (global)
+export async function obtenerCategoriasSugeridas(): Promise<string[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("categorias_sugeridas")
+    .select("nombre")
+    .order("created_at", { ascending: false });
+  if (error || !data) return [];
+  return data.map((row: { nombre: string }) => row.nombre);
 }

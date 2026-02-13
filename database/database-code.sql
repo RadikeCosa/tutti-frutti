@@ -46,6 +46,17 @@ CREATE TABLE respuestas (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+-- Tabla para sugerencias de categorías por admin
+CREATE TABLE categorias_sugeridas (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  nombre text NOT NULL,
+  creador_id uuid NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- Habilitar Realtime si se desea (opcional)
+-- alter publication supabase_realtime add table categorias_sugeridas;
+
 -- Habilitar Realtime en las 4 tablas
 alter publication supabase_realtime add table salas;
 alter publication supabase_realtime add table jugadores;
@@ -57,6 +68,8 @@ CREATE INDEX idx_jugadores_sala_id ON jugadores(sala_id);
 CREATE INDEX idx_rondas_sala_id ON rondas(sala_id);
 CREATE INDEX idx_respuestas_jugador_id ON respuestas(jugador_id);
 CREATE INDEX idx_respuestas_ronda_id ON respuestas(ronda_id);
+
+CREATE INDEX idx_categorias_sugeridas_creador_id ON categorias_sugeridas(creador_id);
 
 
 -- Eliminar duplicados existentes antes de agregar el constraint de unicidad
@@ -83,11 +96,16 @@ ALTER TABLE jugadores ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rondas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE respuestas ENABLE ROW LEVEL SECURITY;
 
+ALTER TABLE categorias_sugeridas ENABLE ROW LEVEL SECURITY;
+
 -- Políticas básicas (todos pueden leer todo por ahora)
 CREATE POLICY "Enable read access for all users" ON salas FOR SELECT USING (true);
 CREATE POLICY "Enable read access for all users" ON jugadores FOR SELECT USING (true);
 CREATE POLICY "Enable read access for all users" ON rondas FOR SELECT USING (true);
 CREATE POLICY "Enable read access for all users" ON respuestas FOR SELECT USING (true);
+
+-- Todos pueden leer todas las sugerencias
+CREATE POLICY "Read all category suggestions" ON categorias_sugeridas FOR SELECT USING (true);
 
 -- Políticas de insert (todos pueden insertar por ahora)
 CREATE POLICY "Enable insert for all users" ON salas FOR INSERT WITH CHECK (true);
@@ -95,8 +113,14 @@ CREATE POLICY "Enable insert for all users" ON jugadores FOR INSERT WITH CHECK (
 CREATE POLICY "Enable insert for all users" ON rondas FOR INSERT WITH CHECK (true);
 CREATE POLICY "Enable insert for all users" ON respuestas FOR INSERT WITH CHECK (true);
 
+-- Cualquier usuario autenticado puede insertar sugerencias
+CREATE POLICY "Insert any category suggestion" ON categorias_sugeridas FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+
 -- Políticas de update (todos pueden actualizar por ahora)
 CREATE POLICY "Enable update for all users" ON salas FOR UPDATE USING (true);
 CREATE POLICY "Enable update for all users" ON jugadores FOR UPDATE USING (true);
 CREATE POLICY "Enable update for all users" ON rondas FOR UPDATE USING (true);
 CREATE POLICY "Enable update for all users" ON respuestas FOR UPDATE USING (true);
+
+-- Solo el creador puede borrar sus sugerencias
+CREATE POLICY "Delete own category suggestions" ON categorias_sugeridas FOR DELETE USING (auth.uid() = creador_id);

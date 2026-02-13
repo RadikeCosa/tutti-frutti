@@ -4,6 +4,11 @@ import { use, useEffect, useState, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { iniciarJuego } from "@/app/actions";
+import {
+  guardarCategoriaSugerida,
+  obtenerCategoriasSugeridas,
+  eliminarCategoriaSugerida,
+} from "@/app/actions";
 import type { SalaEstado } from "@/types/supabase";
 import "./lobby-animations.css";
 
@@ -43,6 +48,15 @@ export default function LobbyPage({ params }: LobbyPageProps) {
 
   const [jugadores, setJugadores] = useState<JugadorData[]>([]);
   const [categorias, setCategorias] = useState<string[]>(["", "", "", "", ""]);
+  const [sugerencias, setSugerencias] = useState<
+    { id: string; nombre: string }[]
+  >([]);
+  const [eliminandoId, setEliminandoId] = useState<string | null>(null);
+  const [guardandoSugerencia, setGuardandoSugerencia] = useState(false);
+  const [sugerenciaGuardada, setSugerenciaGuardada] = useState<string | null>(
+    null,
+  );
+  const [sugerenciaError, setSugerenciaError] = useState<string | null>(null);
   const [isOrganizador, setIsOrganizador] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -88,6 +102,17 @@ export default function LobbyPage({ params }: LobbyPageProps) {
         (j: JugadorData) => j.id === jugadorId,
       );
       setIsOrganizador(!!yo?.es_organizador);
+
+      // Si soy organizador, obtener sugerencias de categorías globales
+      if (yo && yo.es_organizador) {
+        // Traer id y nombre para poder eliminar
+        const supabase = createBrowserClient();
+        const { data } = await supabase
+          .from("categorias_sugeridas")
+          .select("id, nombre")
+          .order("created_at", { ascending: false });
+        setSugerencias(data || []);
+      }
 
       setLoading(false);
     }
@@ -153,6 +178,33 @@ export default function LobbyPage({ params }: LobbyPageProps) {
 
   function handleCategoriaChange(idx: number, value: string) {
     setCategorias((prev) => prev.map((cat, i) => (i === idx ? value : cat)));
+    setSugerenciaGuardada(null);
+  }
+  async function handleGuardarSugerencia(idx: number) {
+    setGuardandoSugerencia(true);
+    setSugerenciaGuardada(null);
+    setSugerenciaError(null);
+    const nombre = categorias[idx]?.trim();
+    if (!nombre) {
+      setGuardandoSugerencia(false);
+      setSugerenciaError("La categoría no puede estar vacía.");
+      return;
+    }
+    const res = await guardarCategoriaSugerida(nombre);
+    if (res.success) {
+      setSugerenciaGuardada(nombre);
+      setSugerenciaError(null);
+      // Refrescar sugerencias desde la BD
+      const { data } = await supabase
+        .from("categorias_sugeridas")
+        .select("id, nombre")
+        .order("created_at", { ascending: false });
+      setSugerencias(data || []);
+    } else {
+      setSugerenciaGuardada(null);
+      setSugerenciaError(res.error || "Error al guardar sugerencia");
+    }
+    setGuardandoSugerencia(false);
   }
 
   async function handleIniciarJuego(e: React.FormEvent) {
@@ -236,21 +288,93 @@ export default function LobbyPage({ params }: LobbyPageProps) {
             onSubmit={handleIniciarJuego}
           >
             <div className="font-semibold mb-2">Configurar categorías</div>
+
             {categorias.map((cat, idx) => (
-              <input
-                key={idx}
-                type="text"
-                value={cat}
-                onChange={(e) => handleCategoriaChange(idx, e.target.value)}
-                maxLength={30}
-                required
-                className="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                placeholder={`Categoría ${idx + 1}`}
-              />
+              <div key={idx} className="flex gap-2 items-center mb-1">
+                <input
+                  type="text"
+                  value={cat}
+                  onChange={(e) => handleCategoriaChange(idx, e.target.value)}
+                  maxLength={30}
+                  required
+                  className="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 flex-1"
+                  placeholder={`Categoría ${idx + 1}`}
+                />
+                <button
+                  type="button"
+                  className="text-xs bg-gray-200 rounded px-2 py-1 ml-1 hover:bg-blue-100 border border-gray-300"
+                  onClick={() => handleGuardarSugerencia(idx)}
+                  disabled={
+                    guardandoSugerencia ||
+                    !cat.trim() ||
+                    sugerencias.some((s) => s.nombre === cat.trim())
+                  }
+                  title="Guardar como sugerencia"
+                >
+                  💾
+                </button>
+              </div>
             ))}
+
+            {/* Chips de sugerencias */}
+            {sugerencias.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-2">
+                {sugerencias.map((sug, idx) => (
+                  <div
+                    key={sug.id || idx}
+                    className="flex items-center px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-xs font-medium border border-blue-200"
+                  >
+                    <button
+                      type="button"
+                      className="mr-1 focus:outline-none"
+                      onClick={() => {
+                        const idxInput = categorias.findIndex((c) => !c.trim());
+                        if (idxInput !== -1)
+                          handleCategoriaChange(idxInput, sug.nombre);
+                      }}
+                      tabIndex={-1}
+                      title="Usar sugerencia"
+                    >
+                      {sug.nombre}
+                    </button>
+                    <button
+                      type="button"
+                      className="ml-1 text-blue-600 hover:text-red-600 focus:outline-none"
+                      disabled={eliminandoId === sug.id}
+                      title="Eliminar sugerencia"
+                      onClick={async () => {
+                        setEliminandoId(sug.id);
+                        await eliminarCategoriaSugerida(sug.id);
+                        // Refrescar sugerencias
+                        const supabase = createBrowserClient();
+                        const { data } = await supabase
+                          .from("categorias_sugeridas")
+                          .select("id, nombre")
+                          .order("created_at", { ascending: false });
+                        setSugerencias(data || []);
+                        setEliminandoId(null);
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {error && sala && (
               <div className="text-red-600 text-sm text-center">{error}</div>
+            )}
+
+            {sugerenciaGuardada && (
+              <div className="text-green-600 text-xs text-center">
+                Sugerencia guardada: {sugerenciaGuardada}
+              </div>
+            )}
+            {sugerenciaError && (
+              <div className="text-red-600 text-xs text-center">
+                {sugerenciaError}
+              </div>
             )}
 
             <button

@@ -57,6 +57,8 @@ export default function ResultadosPage({ params }: ResultadosPageProps) {
   }, [searchParams]);
 
   useEffect(() => {
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
     async function fetchResultados() {
       if (!jugadorId) {
         setError("No se encontró el jugadorId.");
@@ -203,6 +205,29 @@ export default function ResultadosPage({ params }: ResultadosPageProps) {
     }
 
     fetchResultados();
+
+    // Suscripción realtime a respuestas de la ronda actual
+    channel = supabase
+      .channel(`respuestas_ronda_${rondaId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "respuestas",
+          filter: `ronda_id=eq.${rondaId}`,
+        },
+        () => {
+          fetchResultados();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      if (channel) {
+        channel.unsubscribe();
+      }
+    };
   }, [salaId, rondaId, jugadorId, supabase]);
 
   const handleNuevaRonda = async () => {
@@ -303,7 +328,11 @@ export default function ResultadosPage({ params }: ResultadosPageProps) {
                           )}
                         </div>
                         <div className="text-xs font-bold text-blue-600">
-                          {r?.puntos ?? 0} pts
+                          {typeof r?.puntos === "number" ? (
+                            `${r.puntos} pts`
+                          ) : (
+                            <span className="italic text-gray-400">—</span>
+                          )}
                         </div>
                       </td>
                     ))}
@@ -388,11 +417,7 @@ export default function ResultadosPage({ params }: ResultadosPageProps) {
               {procesando ? "Procesando..." : "Finalizar Juego"}
             </button>
           </div>
-        ) : (
-          <div className="text-center text-gray-600 p-4 bg-gray-100 rounded-lg">
-            Esperando decisión del organizador...
-          </div>
-        )}
+        ) : null}
       </div>
     </main>
   );

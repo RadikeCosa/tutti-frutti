@@ -49,6 +49,29 @@ export interface Database {
         };
         Update: Partial<Omit<Jugador, "id" | "created_at">>;
       };
+      categorias_sugeridas: {
+        Row: {
+          readonly id: string;
+          readonly nombre: string;
+          readonly creador_id: string;
+          readonly created_at: string;
+        };
+        Insert: {
+          nombre: string;
+          creador_id: string;
+        };
+        Update: Partial<
+          Omit<
+            {
+              id: string;
+              nombre: string;
+              creador_id: string;
+              created_at: string;
+            },
+            "id" | "created_at"
+          >
+        >;
+      };
     };
   };
 }

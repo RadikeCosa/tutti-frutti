@@ -51,6 +51,8 @@ export default function PuntuarPage({ params }: PuntuarPageProps) {
   }, [searchParams]);
 
   useEffect(() => {
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
     async function fetchData() {
       if (!jugadorId) {
         setError("No se encontró el jugadorId.");
@@ -122,6 +124,29 @@ export default function PuntuarPage({ params }: PuntuarPageProps) {
     }
 
     fetchData();
+
+    // Suscripción realtime a respuestas de la ronda actual (por si otro organizador edita o para futuras mejoras)
+    channel = supabase
+      .channel(`puntuar_respuestas_ronda_${rondaId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "respuestas",
+          filter: `ronda_id=eq.${rondaId}`,
+        },
+        () => {
+          fetchData();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      if (channel) {
+        channel.unsubscribe();
+      }
+    };
   }, [salaId, rondaId, jugadorId, supabase]);
 
   const handlePuntosChange = (respuestaId: string, puntos: number) => {

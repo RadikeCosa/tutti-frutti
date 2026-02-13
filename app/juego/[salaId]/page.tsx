@@ -166,12 +166,6 @@ export default function JuegoPage({ params }: JuegoPageProps) {
         },
         (payload: { new: { estado: string } }) => {
           setRonda((prev) => (prev ? { ...prev, ...payload.new } : prev));
-          if (payload.new.estado === "puntuando") {
-            const yo = jugadores.find((j) => j.id === jugadorId);
-            if (yo?.es_organizador) {
-              router.push(`/puntuar/${salaId}/${ronda.id}`);
-            }
-          }
         },
       )
       .subscribe();
@@ -180,7 +174,20 @@ export default function JuegoPage({ params }: JuegoPageProps) {
       supabase.removeChannel(jugadoresSub);
       supabase.removeChannel(rondaSub);
     };
-  }, [salaId, ronda?.id, router, supabase, jugadores, jugadorId]);
+  }, [salaId, ronda?.id, router, supabase]);
+
+  // Redirección a puntuar/resultados cuando la ronda pasa a puntuando
+  useEffect(() => {
+    if (!ronda || ronda.estado !== "puntuando" || !jugadorId) return;
+    const yo = jugadores.find((j) => j.id === jugadorId);
+    if (yo?.es_organizador) {
+      router.replace(`/puntuar/${salaId}/${ronda.id}`);
+    } else {
+      router.replace(
+        `/resultados/${salaId}/${ronda.id}?jugadorId=${jugadorId}`,
+      );
+    }
+  }, [ronda?.estado, jugadores, jugadorId, salaId, router]);
 
   // Contador de listos
   const listos = jugadores.filter((j) => j.listo).length;
@@ -278,11 +285,12 @@ export default function JuegoPage({ params }: JuegoPageProps) {
 
   // Si la ronda está en puntuando y no soy organizador, mostrar mensaje de espera
   if (ronda.estado === "puntuando" && !esOrganizador) {
+    // Redirección a resultados se maneja en useEffect. Mostrar mensaje de espera.
     return (
       <main className="flex min-h-screen items-center justify-center">
         <div className="bg-white rounded-lg shadow p-8 text-center">
-          <h2 className="text-2xl font-bold mb-4 text-blue-600">
-            Esperando puntuación del organizador...
+          <h2 className="text-2xl font-bold mb-4">
+            Esperando redirección a resultados…
           </h2>
         </div>
       </main>
