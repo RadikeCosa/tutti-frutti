@@ -2,6 +2,48 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 
+// Cambiar la letra de la ronda actual (solo organizador)
+interface CambiarLetraRondaInput {
+  readonly salaId: string;
+  readonly rondaId: string;
+  readonly jugadorId: string;
+}
+
+export async function cambiarLetraRonda({
+  salaId,
+  rondaId,
+  jugadorId,
+}: CambiarLetraRondaInput): Promise<{ success: boolean; error?: string }> {
+  const supabase = await createClient();
+  // Validar que el jugador es organizador
+  const { data: jugador, error: jugadorError } = await supabase
+    .from("jugadores")
+    .select("es_organizador, sala_id")
+    .eq("id", jugadorId)
+    .single();
+  if (jugadorError || !jugador) {
+    return { success: false, error: "Jugador no encontrado" };
+  }
+  if (!jugador.es_organizador || jugador.sala_id !== salaId) {
+    return {
+      success: false,
+      error: "Solo el organizador puede cambiar la letra",
+    };
+  }
+  // Generar nueva letra aleatoria
+  const nuevaLetra = randomLetter();
+  // Actualizar la ronda
+  const { error: rondaError } = await supabase
+    .from("rondas")
+    .update({ letra: nuevaLetra })
+    .eq("id", rondaId)
+    .eq("sala_id", salaId);
+  if (rondaError) {
+    return { success: false, error: "No se pudo cambiar la letra" };
+  }
+  return { success: true };
+}
+
 // Eliminar una sugerencia de categoría por id
 export async function eliminarCategoriaSugerida(
   id: string,

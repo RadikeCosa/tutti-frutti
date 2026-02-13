@@ -1,6 +1,6 @@
 "use client";
 import { use, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { asignarPuntos, finalizarPuntuacion } from "@/app/actions";
 
@@ -23,6 +23,7 @@ interface PuntuarPageProps {
 }
 
 export default function PuntuarPage({ params }: PuntuarPageProps) {
+  const router = useRouter();
   const { salaId, rondaId } = use(params);
   const searchParams = useSearchParams();
   const supabase = useMemo(() => createBrowserClient(), []);
@@ -52,6 +53,8 @@ export default function PuntuarPage({ params }: PuntuarPageProps) {
 
   useEffect(() => {
     let channel: ReturnType<typeof supabase.channel> | null = null;
+    let rondaChannel: ReturnType<typeof supabase.channel> | null = null;
+    let salaChannel: ReturnType<typeof supabase.channel> | null = null;
 
     async function fetchData() {
       if (!jugadorId) {
@@ -142,12 +145,78 @@ export default function PuntuarPage({ params }: PuntuarPageProps) {
       )
       .subscribe();
 
+    // Suscripción realtime a la tabla de rondas para detectar nueva ronda
+    rondaChannel = supabase
+      .channel(`rondas-sala-${salaId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "rondas",
+          filter: `sala_id=eq.${salaId}`,
+        },
+        (payload) => {
+          // Si se crea una nueva ronda, redirigir a /juego/[salaId]
+          router.replace(`/juego/${salaId}`);
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "rondas",
+          filter: `id=eq.${rondaId}`,
+        },
+        () => {
+          // Si la ronda actual se elimina, redirigir a /juego/[salaId]
+          router.replace(`/juego/${salaId}`);
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "rondas",
+          filter: `id=eq.${rondaId}`,
+        },
+        (payload) => {
+          // Si el estado de la ronda deja de ser 'puntuando', redirigir a /juego/[salaId]
+          if (payload.new && payload.new.estado !== "puntuando") {
+            router.replace(`/juego/${salaId}`);
+          }
+        },
+      )
+      .subscribe();
+
+    // Suscripción realtime a la tabla de salas para detectar cambio de estado global
+    salaChannel = supabase
+      .channel(`sala-estado-${salaId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "salas",
+          filter: `id=eq.${salaId}`,
+        },
+        (payload) => {
+          // Si el estado de la sala es "jugando", redirigir a /juego/[salaId]
+          if (payload.new && payload.new.estado === "jugando") {
+            router.replace(`/juego/${salaId}`);
+          }
+        },
+      )
+      .subscribe();
+
     return () => {
-      if (channel) {
-        channel.unsubscribe();
-      }
+      if (channel) channel.unsubscribe();
+      if (rondaChannel) rondaChannel.unsubscribe();
+      if (salaChannel) salaChannel.unsubscribe();
     };
-  }, [salaId, rondaId, jugadorId, supabase]);
+  }, [salaId, rondaId, jugadorId, supabase, router]);
 
   const handlePuntosChange = (respuestaId: string, puntos: number) => {
     setPuntosAsignados((prev) => ({ ...prev, [respuestaId]: puntos }));

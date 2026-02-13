@@ -1,4 +1,3 @@
-// app/juego/[salaId]/page.tsx
 "use client";
 import { use, useEffect, useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
@@ -43,6 +42,48 @@ export default function JuegoPage({ params }: JuegoPageProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
+
+  // Estado para ventana de 3 segundos y feedback de cambio de letra
+  const [puedeCambiarLetra, setPuedeCambiarLetra] = useState(false);
+  const [cambiandoLetra, setCambiandoLetra] = useState(false);
+  const [errorLetra, setErrorLetra] = useState<string | null>(null);
+
+  // Ventana de 3 segundos desde que inicia la ronda
+  useEffect(() => {
+    setPuedeCambiarLetra(false);
+    setErrorLetra(null);
+    if (ronda && ronda.estado === "escribiendo") {
+      setPuedeCambiarLetra(true);
+      const timer = setTimeout(() => setPuedeCambiarLetra(false), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [ronda?.id, ronda?.estado]);
+
+  // Handler para cambiar la letra
+  async function handleCambiarLetra() {
+    if (!yo?.id || !ronda?.id || !sala?.id) return;
+    setCambiandoLetra(true);
+    setErrorLetra(null);
+    try {
+      const res = await fetch("/api/cambiar-letra", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          salaId: sala.id,
+          rondaId: ronda.id,
+          jugadorId: yo.id,
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setErrorLetra(data.error || "No se pudo cambiar la letra");
+      }
+    } catch (e) {
+      setErrorLetra("Error de red");
+    } finally {
+      setCambiandoLetra(false);
+    }
+  }
 
   // Obtener jugadorId de searchParams o localStorage
   useEffect(() => {
@@ -302,9 +343,30 @@ export default function JuegoPage({ params }: JuegoPageProps) {
       <div className="w-full max-w-md flex flex-col gap-8">
         <div className="flex flex-col items-center gap-2">
           <div className="text-lg font-medium">Letra de la ronda</div>
-          <div className="text-5xl font-mono tracking-widest bg-yellow-100 rounded px-6 py-4 select-all">
-            {ronda.letra}
+          <div className="flex items-center gap-2">
+            <div className="text-5xl font-mono tracking-widest bg-yellow-100 rounded px-6 py-4 select-all">
+              {ronda.letra}
+            </div>
+            {esOrganizador && puedeCambiarLetra && (
+              <button
+                type="button"
+                className="ml-2 bg-yellow-500 text-white font-semibold px-3 py-2 rounded hover:bg-yellow-600 transition text-base disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={handleCambiarLetra}
+                disabled={cambiandoLetra}
+                aria-label="Cambiar letra"
+              >
+                {cambiandoLetra ? "Cambiando..." : "Cambiar letra"}
+              </button>
+            )}
           </div>
+          {errorLetra && (
+            <div className="text-red-600 text-xs mt-1">{errorLetra}</div>
+          )}
+          {esOrganizador && puedeCambiarLetra && (
+            <div className="text-xs text-gray-500 mt-1">
+              Solo disponible los primeros 3 segundos
+            </div>
+          )}
         </div>
 
         <div className="bg-white rounded-lg shadow p-6">
