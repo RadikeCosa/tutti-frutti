@@ -100,6 +100,12 @@ export default function JuegoPage({ params }: JuegoPageProps) {
     }
   }, [searchParams]);
 
+  // Reset listo and respuestas when ronda changes (new round)
+  useEffect(() => {
+    setListo(false);
+    setRespuestas(["", "", "", "", ""]);
+  }, [ronda?.id]);
+
   // Obtener sala, ronda y jugadores
   useEffect(() => {
     async function fetchSalaRondaJugadores() {
