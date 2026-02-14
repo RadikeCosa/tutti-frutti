@@ -154,7 +154,7 @@ export default function PuntuarPage({ params }: PuntuarPageProps) {
 
     // Suscripción realtime a la tabla de rondas para detectar nueva ronda
     rondaChannel = supabase
-      .channel(`rondas-sala-${salaId}`)
+      .channel(`puntuar-rondas-sala-${salaId}`)
       .on(
         "postgres_changes",
         {
@@ -200,7 +200,7 @@ export default function PuntuarPage({ params }: PuntuarPageProps) {
 
     // Suscripción realtime a la tabla de salas para detectar cambio de estado global
     salaChannel = supabase
-      .channel(`sala-estado-${salaId}`)
+      .channel(`puntuar-sala-estado-${salaId}`)
       .on(
         "postgres_changes",
         {
@@ -219,9 +219,9 @@ export default function PuntuarPage({ params }: PuntuarPageProps) {
       .subscribe();
 
     return () => {
-      if (channel) channel.unsubscribe();
-      if (rondaChannel) rondaChannel.unsubscribe();
-      if (salaChannel) salaChannel.unsubscribe();
+      if (channel) supabase.removeChannel(channel);
+      if (rondaChannel) supabase.removeChannel(rondaChannel);
+      if (salaChannel) supabase.removeChannel(salaChannel);
     };
   }, [salaId, rondaId, jugadorId, supabase, router]);
 
