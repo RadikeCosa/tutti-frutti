@@ -1,7 +1,7 @@
 // app/resultados/[salaId]/[rondaId]/page.tsx
 "use client";
 import { use, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { nuevaRonda, finalizarJuego } from "@/app/actions";
 
@@ -27,6 +27,7 @@ interface ResultadosPageProps {
 }
 
 export default function ResultadosPage({ params }: ResultadosPageProps) {
+  const router = useRouter();
   const { salaId, rondaId } = use(params);
   const searchParams = useSearchParams();
   const supabase = useMemo(() => createBrowserClient(), []);
@@ -58,6 +59,8 @@ export default function ResultadosPage({ params }: ResultadosPageProps) {
 
   useEffect(() => {
     let channel: ReturnType<typeof supabase.channel> | null = null;
+    let rondaChannel: ReturnType<typeof supabase.channel> | null = null;
+    let salaChannel: ReturnType<typeof supabase.channel> | null = null;
 
     async function fetchResultados() {
       if (!jugadorId) {
@@ -223,12 +226,60 @@ export default function ResultadosPage({ params }: ResultadosPageProps) {
       )
       .subscribe();
 
+    // Suscripción realtime a la tabla de rondas para detectar nueva ronda
+    rondaChannel = supabase
+      .channel(`rondas-sala-${salaId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "rondas",
+          filter: `sala_id=eq.${salaId}`,
+        },
+        () => {
+          // Si se crea una nueva ronda, redirigir a /juego/[salaId]
+          router.replace(`/juego/${salaId}`);
+        },
+      )
+      .subscribe();
+
+    // Suscripción realtime a la tabla de salas para detectar cambio de estado global
+    salaChannel = supabase
+      .channel(`sala-estado-${salaId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "salas",
+          filter: `id=eq.${salaId}`,
+        },
+        (payload) => {
+          // Si el estado de la sala es "jugando", redirigir a /juego/[salaId]
+          if (payload.new && payload.new.estado === "jugando") {
+            router.replace(`/juego/${salaId}`);
+          }
+          // Si el estado de la sala es "finalizada", redirigir a /ranking/[salaId]
+          if (payload.new && payload.new.estado === "finalizada") {
+            router.replace(`/ranking/${salaId}`);
+          }
+        },
+      )
+      .subscribe();
+
     return () => {
       if (channel) {
         channel.unsubscribe();
       }
+      if (rondaChannel) {
+        rondaChannel.unsubscribe();
+      }
+      if (salaChannel) {
+        salaChannel.unsubscribe();
+      }
     };
-  }, [salaId, rondaId, jugadorId, supabase]);
+  }, [salaId, rondaId, jugadorId, supabase, router]);
 
   const handleNuevaRonda = async () => {
     if (!jugadorId) {
