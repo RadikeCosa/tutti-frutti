@@ -210,7 +210,16 @@ export default function JuegoPage({ params }: JuegoPageProps) {
           filter: `id=eq.${ronda.id}`,
         },
         (payload: { new: { estado: string } }) => {
-          setRonda((prev) => (prev ? { ...prev, ...payload.new } : prev));
+          setRonda((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  ...payload.new,
+                  estado: payload.new
+                    .estado as import("@/types/supabase").RondaEstado,
+                }
+              : prev,
+          );
         },
       )
       .subscribe();
