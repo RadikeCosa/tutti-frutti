@@ -154,7 +154,7 @@ export default function JuegoPage({ params }: JuegoPageProps) {
           .eq("id", jugadorId)
           .single();
         if (jugadorData?.es_organizador) {
-          router.replace(`/puntuar/${salaId}/${rondaData.id}`);
+          router.replace(`/puntuar/${salaId}/${rondaData.id}?jugadorId=${jugadorId}`);
           return;
         }
         // Si no es organizador, continuar normal (mostrará mensaje de espera)
@@ -228,7 +228,7 @@ export default function JuegoPage({ params }: JuegoPageProps) {
     if (!ronda || ronda.estado !== "puntuando" || !jugadorId) return;
     const yo = jugadores.find((j) => j.id === jugadorId);
     if (yo?.es_organizador) {
-      router.replace(`/puntuar/${salaId}/${ronda.id}`);
+      router.replace(`/puntuar/${salaId}/${ronda.id}?jugadorId=${jugadorId}`);
     } else {
       router.replace(
         `/resultados/${salaId}/${ronda.id}?jugadorId=${jugadorId}`,
