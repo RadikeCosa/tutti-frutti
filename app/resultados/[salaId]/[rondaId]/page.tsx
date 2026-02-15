@@ -1,7 +1,8 @@
 // app/resultados/[salaId]/[rondaId]/page.tsx
 "use client";
 import { use, useEffect, useMemo, useState } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useGameSession } from "@/app/_hooks/useGameSession";
+import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
 
 import { nuevaRonda, finalizarJuego } from "@/app/actions";
@@ -31,7 +32,7 @@ interface ResultadosPageProps {
 export default function ResultadosPage({ params }: ResultadosPageProps) {
   const router = useRouter();
   const { salaId, rondaId } = use(params);
-  const searchParams = useSearchParams();
+  const { jugadorId, isLoading: isSessionLoading } = useGameSession();
   const supabase = useMemo(() => createBrowserClient(), []);
 
   const [resultados, setResultados] = useState<ResultadoRonda[]>([]);
@@ -45,19 +46,20 @@ export default function ResultadosPage({ params }: ResultadosPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [procesando, setProcesando] = useState(false);
 
-  // Obtener jugadorId de searchParams o localStorage
-  const jugadorId = useMemo(() => {
-    if (typeof window === "undefined") return null;
-
-    const param = searchParams.get("jugadorId");
-    const stored = localStorage.getItem("jugadorId");
-
-    if (param) {
-      localStorage.setItem("jugadorId", param);
-      return param;
-    }
-    return stored;
-  }, [searchParams]);
+  if (isSessionLoading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center">
+        <div className="text-center">Cargando sesión...</div>
+      </main>
+    );
+  }
+  if (!jugadorId) {
+    return (
+      <main className="flex min-h-screen items-center justify-center">
+        <div className="text-center">No se encontró tu sesión</div>
+      </main>
+    );
+  }
 
   useEffect(() => {
     let channel: ReturnType<typeof supabase.channel> | null = null;

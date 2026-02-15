@@ -1,6 +1,7 @@
 // app/lobby/[salaId]/page.tsx
 "use client";
 import { use, useEffect, useState, useMemo } from "react";
+import { useGameSession } from "@/app/_hooks/useGameSession";
 import { useSearchParams, useRouter } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { iniciarJuego } from "@/app/actions";
@@ -21,22 +22,23 @@ interface LobbyPageProps {
 export default function LobbyPage({ params }: LobbyPageProps) {
   const { salaId } = use(params);
   const router = useRouter();
-  const searchParams = useSearchParams();
+  const { jugadorId, isLoading: isSessionLoading } = useGameSession();
   const supabase = useMemo(() => createBrowserClient(), []);
 
-  // Obtener jugadorId de searchParams o localStorage (sin useEffect)
-  const jugadorId = useMemo(() => {
-    if (typeof window === "undefined") return null;
-
-    const param = searchParams.get("jugadorId");
-    const stored = localStorage.getItem("jugadorId");
-
-    if (param) {
-      localStorage.setItem("jugadorId", param);
-      return param;
-    }
-    return stored;
-  }, [searchParams]);
+  if (isSessionLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        Cargando sesión...
+      </div>
+    );
+  }
+  if (!jugadorId) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        No se encontró tu sesión
+      </div>
+    );
+  }
 
   const [sala, setSala] = useState<{
     id: string;
