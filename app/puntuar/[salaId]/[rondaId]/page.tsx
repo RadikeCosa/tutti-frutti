@@ -3,6 +3,7 @@ import { use, useEffect, useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { asignarPuntos, finalizarPuntuacion } from "@/app/actions";
+import type { Ronda } from "@/types/supabase";
 
 interface Sala {
   readonly categorias: readonly string[];
@@ -190,9 +191,13 @@ export default function PuntuarPage({ params }: PuntuarPageProps) {
           filter: `id=eq.${rondaId}`,
         },
         (payload) => {
-          // Si el estado de la ronda deja de ser 'puntuando', redirigir a /juego/[salaId]
+          // Si el estado de la ronda deja de ser 'puntuando', redirigir a /resultados/[salaId]/[rondaId]?jugadorId=...
           if (payload.new && payload.new.estado !== "puntuando") {
-            router.replace(`/juego/${salaId}`);
+            const jugadorIdParam =
+              localStorage.getItem("jugadorId") || jugadorId || "";
+            router.replace(
+              `/resultados/${salaId}/${rondaId}?jugadorId=${jugadorIdParam}`,
+            );
           }
         },
       )
@@ -243,10 +248,10 @@ export default function PuntuarPage({ params }: PuntuarPageProps) {
         puntos: puntosAsignados[resp.id] ?? 0,
         jugadorId,
       }));
-      
+
       // Asignar todos los puntos a la vez
       await asignarPuntos(puntosArray);
-      
+
       // Finalizar puntuación
       await finalizarPuntuacion({ salaId, rondaId, jugadorId });
     } catch (e: unknown) {
@@ -281,7 +286,7 @@ export default function PuntuarPage({ params }: PuntuarPageProps) {
   // Helper function to get respuesta for a specific jugador and categoria
   const getRespuesta = (jugadorId: string, categoriaIndex: number) => {
     return respuestas.find(
-      (r) => r.jugador_id === jugadorId && r.categoria_index === categoriaIndex
+      (r) => r.jugador_id === jugadorId && r.categoria_index === categoriaIndex,
     );
   };
 
@@ -323,7 +328,10 @@ export default function PuntuarPage({ params }: PuntuarPageProps) {
                       {jugador.nombre}
                     </td>
                     {sala.categorias.map((_, categoriaIndex) => {
-                      const respuesta = getRespuesta(jugador.id, categoriaIndex);
+                      const respuesta = getRespuesta(
+                        jugador.id,
+                        categoriaIndex,
+                      );
                       return (
                         <td key={categoriaIndex} className="border-b px-4 py-3">
                           <div className="space-y-2">
@@ -344,7 +352,7 @@ export default function PuntuarPage({ params }: PuntuarPageProps) {
                                   onChange={(e) =>
                                     handlePuntosChange(
                                       respuesta.id,
-                                      Number(e.target.value)
+                                      Number(e.target.value),
                                     )
                                   }
                                   disabled={enviando}

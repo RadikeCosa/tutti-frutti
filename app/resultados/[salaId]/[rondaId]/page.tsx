@@ -3,7 +3,9 @@
 import { use, useEffect, useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
+
 import { nuevaRonda, finalizarJuego } from "@/app/actions";
+import type { Ronda } from "@/types/supabase";
 
 interface ResultadoRonda {
   jugadorId: string;
@@ -88,9 +90,9 @@ export default function ResultadosPage({ params }: ResultadosPageProps) {
         // Obtener número de ronda
         const { data: ronda, error: rondaError } = await supabase
           .from("rondas")
-          .select("numero_ronda")
+          .select("*")
           .eq("id", rondaId)
-          .single();
+          .single<Ronda>();
 
         if (rondaError || !ronda) {
           throw rondaError || new Error("Ronda no encontrada");
@@ -165,7 +167,8 @@ export default function ResultadosPage({ params }: ResultadosPageProps) {
           throw rondasError || new Error("No se pudieron obtener rondas");
         }
 
-        const idsRondas = todasRondas.map((r) => r.id);
+        // todasRondas: { id: string }[]
+        const idsRondas = todasRondas.map((r: { id: string }) => r.id);
 
         // Obtener todas las respuestas de todas las rondas
         const { data: todasRespuestas, error: todasRespError } = await supabase

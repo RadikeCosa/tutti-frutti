@@ -2,6 +2,8 @@
 import { use, useEffect, useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
+
+import type { Ronda } from "@/types/supabase";
 import "./ranking-animations.css";
 
 interface RankingEntry {
@@ -62,7 +64,7 @@ export default function RankingPage({ params }: RankingPageProps) {
           throw rondasError || new Error("No se pudieron obtener rondas");
         }
 
-        const rondaIds = rondas.map((r) => r.id);
+        const rondaIds = (rondas as { id: string }[]).map((r) => r.id);
 
         // Obtener respuestas de todas las rondas
         let todasRespuestas: Array<{ jugador_id: string; puntos: number }> = [];

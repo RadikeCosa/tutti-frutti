@@ -3,17 +3,13 @@ import { use, useEffect, useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { guardarRespuestas, terminarRonda } from "@/app/actions";
-import type { SalaEstado } from "@/types/supabase";
+import type { SalaEstado, Ronda } from "@/types/supabase";
 
 interface JuegoPageProps {
   params: Promise<{ salaId: string }>;
 }
 
-interface Ronda {
-  id: string;
-  letra: string;
-  estado: string;
-}
+// Se usa el tipo Ronda importado
 
 interface Jugador {
   id: string;
@@ -133,11 +129,11 @@ export default function JuegoPage({ params }: JuegoPageProps) {
       // Ronda actual
       const { data: rondaData } = await supabase
         .from("rondas")
-        .select("id, letra, estado")
+        .select("*")
         .eq("sala_id", salaId)
         .order("numero_ronda", { ascending: false })
         .limit(1)
-        .single();
+        .single<Ronda>();
 
       if (!rondaData) {
         setError("Ronda no encontrada");
@@ -154,7 +150,9 @@ export default function JuegoPage({ params }: JuegoPageProps) {
           .eq("id", jugadorId)
           .single();
         if (jugadorData?.es_organizador) {
-          router.replace(`/puntuar/${salaId}/${rondaData.id}?jugadorId=${jugadorId}`);
+          router.replace(
+            `/puntuar/${salaId}/${rondaData.id}?jugadorId=${jugadorId}`,
+          );
           return;
         }
         // Si no es organizador, continuar normal (mostrará mensaje de espera)

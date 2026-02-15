@@ -49,6 +49,16 @@ export interface Database {
         };
         Update: Partial<Omit<Jugador, "id" | "created_at">>;
       };
+      rondas: {
+        Row: Ronda;
+        Insert: {
+          sala_id: string;
+          numero_ronda: number;
+          letra: string;
+          estado: RondaEstado;
+        };
+        Update: Partial<Omit<Ronda, "id" | "created_at">>;
+      };
       categorias_sugeridas: {
         Row: {
           readonly id: string;
@@ -74,4 +84,15 @@ export interface Database {
       };
     };
   };
+}
+
+export type RondaEstado = "escribiendo" | "puntuando" | "finalizada";
+
+export interface Ronda {
+  readonly id: string;
+  readonly sala_id: string;
+  readonly numero_ronda: number;
+  readonly letra: string;
+  readonly estado: RondaEstado;
+  readonly created_at: string;
 }
