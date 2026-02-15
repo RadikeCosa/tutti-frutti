@@ -404,7 +404,7 @@ export async function finalizarPuntuacion({
     console.error("Error al actualizar jugadores:", jugadoresError);
     throw new Error("No se pudo actualizar jugadores");
   }
-  redirect(`/resultados/${salaId}/${rondaId}`);
+  redirect(`/resultados/${salaId}/${rondaId}?jugadorId=${jugadorId}`);
 }
 
 // --- Server Actions para resultados ---
@@ -472,7 +472,7 @@ export async function nuevaRonda({ salaId, jugadorId }: NuevaRondaInput) {
     console.error("Error al actualizar jugadores:", jugadoresError);
     throw new Error("No se pudo actualizar jugadores");
   }
-  redirect(`/juego/${salaId}`);
+  redirect(`/juego/${salaId}?jugadorId=${jugadorId}`);
 }
 
 interface FinalizarJuegoInput {
