@@ -1,18 +1,70 @@
-# Game Skill – Tutti Frutti Logic
+# Game Skill — Tutti Frutti Logic
 
-## Core Concepts
-
-- Room
-- Player
-- Round
-- Answer
-- Score
+Defines core game domain rules, state machine, and data invariants.
+Always follow these rules when generating game logic.
 
 ---
 
-## Room States
+## Core Domain Model
 
-Valid states:
+### Room
+
+Represents a game session.
+
+- Has one organizer.
+- Has many players.
+- Has many rounds.
+- Has one current state.
+- Has configurable categories.
+- Has a unique room code.
+
+---
+
+### Player
+
+- Belongs to one room.
+- Has a role: organizer or player.
+- Has accumulated score.
+- Can submit answers per round.
+
+---
+
+### Round
+
+- Belongs to one room.
+- Has a sequential number.
+- Has a random letter.
+- Has answers per player per category.
+- Has scoring results.
+
+---
+
+### Answer
+
+- Belongs to one player.
+- Belongs to one round.
+- Belongs to one category.
+- Contains text value.
+- May be empty.
+
+Constraint:
+
+- Only one answer per player per category per round.
+
+---
+
+### Score
+
+- Assigned by organizer.
+- Stored per category.
+- Aggregated per round.
+- Accumulated per player.
+
+---
+
+## Room State Machine
+
+### Valid States
 
 - lobby
 - escribiendo
@@ -24,16 +76,35 @@ Never invent new states.
 
 ---
 
-## Roles
+### Allowed Transitions
 
-Organizer:
+- lobby → escribiendo
+- escribiendo → puntuando
+- puntuando → resultado_ronda
+- resultado_ronda → escribiendo
+- resultado_ronda → finalizada
 
-- Start game
-- Create rounds
+Rules:
+
+- States cannot move backwards.
+- Only organizer can change state.
+- State change must be atomic.
+
+---
+
+## Roles and Permissions
+
+### Organizer
+
+- Create room
+- Configure categories
+- Start rounds
+- Skip letter
+- Change room state
 - Score answers
 - Finish game
 
-Player:
+### Player
 
 - Join room
 - Submit answers
@@ -43,67 +114,88 @@ Player:
 
 ## Game Flow
 
-1. Create room
-2. Add organizer
-3. Players join
-4. Organizer sets categories
-5. Organizer starts round
-6. Players submit answers
-7. Organizer scores
-8. Show round results
-9. Repeat or finish
+1. Create room.
+2. Organizer joins.
+3. Players join.
+4. Organizer sets categories.
+5. Organizer starts round → state: escribiendo.
+6. Players submit answers.
+7. Organizer scores → state: puntuando.
+8. Show results → state: resultado_ronda.
+9. Repeat or finish.
 
 ---
 
 ## Validation Rules
 
-- Room code → 6 alphanumeric chars
-- Categories → required before start
-- Answers → may be empty
-- Only organizer can change room state
+- Room code must be 6 uppercase letters.
+- Categories required before starting first round.
+- Only organizer can change room state.
+- Answers may be empty.
+- Player cannot submit multiple answers for same category in a round.
+
+Always validate on server.
 
 ---
 
 ## Realtime Usage
 
-Realtime is required for:
+Realtime synchronization required for:
 
 - Player join/leave
-- Ready status
 - Room state changes
+- Round creation
+- Answer submissions
 - Score updates
 
-Not required for:
+Requirements:
 
-- Static configuration
-- Historical results
+- UI must tolerate temporary disconnection.
+- Reconnection must resync current room state.
 
 ---
 
 ## Scoring Logic
 
-- Score per category
-- Sum per round
-- Accumulate per player
-- Ranking based on total points
+- Score is assigned by organizer.
+- Score stored per category.
+- Round total is sum of category scores.
+- Player total is sum of round scores.
+- Ranking based on total score.
 
 ---
 
-## Data Consistency
+## Data Consistency Invariants
 
 - One organizer per room.
-- One answer per player per category per round.
-- Round number must be sequential.
-- Room cannot return to previous states.
+- One active round at a time.
+- Round numbers must be sequential.
+- Room state must be valid.
+- Room cannot return to previous state.
+- Answers locked after scoring begins.
 
 ---
 
-## Error Scenarios
+## Error Handling Rules
+
+System must handle:
 
 - Room not found
 - Room already started
-- Player not organizer
-- Duplicate answer
-- Connection lost
+- Player without permission
+- Duplicate answer submission
+- Network interruption
 
-Always handle gracefully.
+Behavior:
+
+- Never crash UI.
+- Show clear error messages.
+- Preserve local state when possible.
+
+---
+
+## Naming Rules
+
+- Domain entities use English names.
+- Room states remain in Spanish.
+- Keep naming consistent across codebase.

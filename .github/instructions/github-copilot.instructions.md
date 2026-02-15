@@ -2,7 +2,7 @@
 applyTo: "**"
 ---
 
-# GitHub Copilot Instructions - Tutti Frutti
+# GitHub Copilot Instructions — Tutti Frutti
 
 ## General Rules
 
@@ -12,12 +12,14 @@ applyTo: "**"
 - Follow the folder structure strictly.
 - Avoid unnecessary dependencies.
 - Write simple and readable code over clever code.
+- Ensure all code is well-documented and maintainable.
+- Focus on the user experience and accessibility.
 
 ---
 
 ## Project Context
 
-Multiplayer online game similar to Tutti-Frutti (Stop/Basta):
+Multiplayer online game similar to Tutti-Frutti:
 
 - Players join via invitation link.
 - Players write words for 5 customizable categories.
@@ -28,13 +30,23 @@ Multiplayer online game similar to Tutti-Frutti (Stop/Basta):
 
 ## Tech Stack (Do Not Change)
 
-- **Framework:** Next.js 16 – App Router only
-- **Language:** TypeScript strict mode
-- **Styling:** Tailwind CSS v4
-- **Database:** Supabase (PostgreSQL + Realtime)
-- **Deployment:** Vercel
+- Framework: Next.js 16 — App Router only
+- Language: TypeScript strict mode
+- Styling: Tailwind CSS v4
+- Database: Supabase (PostgreSQL + Realtime)
+- Deployment: Vercel
 
 Do not suggest alternative stacks.
+
+---
+
+## Architecture Principles
+
+- Server Components by default.
+- Client Components only for interactivity.
+- Server Actions handle mutations.
+- Database access happens on the server whenever possible.
+- Realtime is used for shared game state.
 
 ---
 
@@ -54,13 +66,14 @@ Do not suggest alternative stacks.
 
 ### Next.js
 
-- Use **App Router only**.
+- Use App Router only.
 - Do not use Pages Router.
-- Do not mix App Router and Pages Router.
-- Server Components by default.
-- Client Components only when necessary (`'use client'`).
+- Do not mix routers.
+- Use Server Components by default.
+- Use `'use client'` only when required.
 - Use Server Actions for mutations.
-- Avoid `use server` inside client files.
+- Do not fetch sensitive data in client components.
+- Provide `loading.tsx` and `error.tsx` when appropriate.
 
 ---
 
@@ -75,14 +88,75 @@ Do not suggest alternative stacks.
 
 ---
 
+## Architecture and Maintainability
+
+### Single Responsibility Principle (SRP)
+
+- Each component must have a single clear responsibility.
+- Separate UI, state logic, and data access.
+- Prefer smaller composable components over large components.
+- Extract complex logic to utilities or hooks when appropriate.
+- Avoid components that handle layout, business logic, and data fetching together.
+
+---
+
+### Component Composition
+
+- Prefer composition over large monolithic components.
+- Extract reusable UI patterns.
+- Separate container components from presentational components when useful.
+- Keep components easy to test and maintain.
+- A component should not exceed ~150 lines when possible.
+- Extract subcomponents when JSX becomes complex.
+- Avoid mixing styling, business logic, and data fetching in the same component.
+
+---
+
+### Styling Organization
+
+- Prefer centralized and reusable styles.
+- Avoid duplicating long Tailwind class strings.
+- Extract reusable style patterns into:
+  - shared UI components
+  - utility functions
+  - CSS variables
+- Keep styling consistent across the application.
+- Separate styling concerns from business logic.
+
+---
+
+### Data Fetching
+
+- Prefer server-side data fetching.
+- Use Suspense where appropriate.
+- Avoid unnecessary client fetching.
+- Handle loading and error states explicitly.
+
+---
+
 ### Supabase
 
 - Always use generated types.
-- Realtime subscriptions for shared state.
 - Row Level Security must always be enabled.
 - Never expose service role keys to the client.
 - Never bypass RLS from frontend.
 - Optimize queries with specific `select`.
+
+#### Access Pattern
+
+- Server: full database access respecting RLS.
+- Client: minimal access for realtime and UI updates.
+
+---
+
+### Realtime
+
+- Use for shared game state synchronization.
+- Subscribe inside `useEffect`.
+- Always cleanup on unmount.
+- Handle reconnections.
+- Use optimistic updates when appropriate.
+- UI must remain functional if realtime temporarily fails.
 
 ---
 
@@ -99,10 +173,7 @@ Do not suggest alternative stacks.
 
 app/
 (routes)/
-page.tsx
-layout.tsx
 actions/
-\*.ts
 components/
 ui/
 game/
@@ -135,13 +206,21 @@ utils/
 
 ---
 
+## Validation Rules
+
+- Always validate on the server.
+- Client validation is allowed for UX but not trusted.
+- Never trust client input.
+
+---
+
 ## Priorities
 
-1. **Simplicity** – clarity over cleverness.
-2. **Performance** – minimize re-renders, use Suspense.
-3. **UX** – loading states, errors, visual feedback.
-4. **Realtime** – smooth synchronization.
-5. **Accessibility** – semantic HTML.
+1. Simplicity — clarity over cleverness.
+2. Performance — minimize re-renders.
+3. UX — loading states, errors, feedback.
+4. Realtime — smooth synchronization.
+5. Accessibility — semantic HTML.
 
 ---
 
@@ -156,82 +235,54 @@ type SalaEstado =
   | "puntuando"
   | "resultado_ronda"
   | "finalizada";
-Realtime Subscriptions
-Subscribe inside useEffect.
+```
 
-Always cleanup on unmount.
+### Player Roles
 
-Handle reconnections.
+- Organizer: full control, can start rounds, score answers.
+- Player: can join room, submit answers, see results.
 
-Use optimistic updates when appropriate.
+### Validations
 
-Roles
-Organizer: start game, score, finish.
+- Room code: 6 uppercase letters, unique.
+- Categories: Required before starting round.
+- Answers: Can be empty.
 
-Player: write answers, view results.
+### Do Not
 
-Validations
-Room code: 6 alphanumeric characters.
+- Do not use any
+- Do not mix routers
+- Do not use Context API for shared game state
+- Do not creat complex custom hooks prematurely
+- Do not over optimize before measuring
+- Do not use heave UI libraries
+- Do not fetch from client when Server Actions are better
+- Do not hardcode DB values
 
-Categories: required before starting.
+### DO
 
-Answers: may be empty.
+- Validate user inputs
+- Handle loading and error states
+- Use descriptive log in development
+- Commen only when logic is not obvious
+- Extract complex logic into utilities
+- Think mobile-first
+- Respect RLS and permissions
 
-Do Not
-❌ Do not use any.
+### Supabase Schema (Reference)
 
-❌ Do not mix routers.
-
-❌ Do not use Context API for shared game state.
-
-❌ Do not create complex custom hooks prematurely.
-
-❌ Do not over-optimize before measuring.
-
-❌ Do not use heavy UI libraries.
-
-❌ Do not fetch from client when Server Actions are better.
-
-❌ Do not hardcode DB values.
-
-❌ Do not duplicate validations in client and server.
-
-Do
-✅ Validate user inputs.
-
-✅ Handle loading and error states.
-
-✅ Use descriptive logs in development.
-
-✅ Comment only when logic is not obvious.
-
-✅ Extract complex logic to utilities.
-
-✅ Think mobile-first.
-
-✅ Respect RLS and permissions.
-
-Supabase Schema (Reference)
 Main tables:
 
-salas
+- salas
+- jugadores
+- rondas
+- respuestas
 
-jugadores
+### Mental Checklist Before Generating Code
 
-rondas
-
-respuestas
-
-Mental Checklist Before Generating Code
-Does this need to be a Client Component?
-
-Does this data need Realtime?
-
-Is validation required?
-
-What happens if the connection fails?
-
-Does it work on mobile?
-
-Does it respect RLS and permissions?
-```
+- Does this need to be a Client Component?
+- Does this data need Realtime?
+- Is validation required?
+- What happens if the connection fails?
+- Does it work on mobile?
+- Does it respect RLS and permissions?
