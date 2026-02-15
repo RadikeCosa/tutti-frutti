@@ -3,8 +3,11 @@ import { use, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { guardarRespuestas, terminarRonda } from "@/app/actions";
+import { GAME_CONFIG } from "@/lib/constants/game";
 import { useGameSession } from "@/app/_hooks/useGameSession";
-import type { SalaEstado, Ronda } from "@/types/supabase";
+import type { SalaEstado, Ronda, RondaEstado } from "@/types/supabase";
+import { ErrorBoundary } from "@/app/_components/ui/ErrorBoundary";
+import LoadingSpinner from "@/app/_components/ui/LoadingSpinner";
 
 interface JuegoPageProps {
   params: Promise<{ salaId: string }>;
@@ -20,12 +23,21 @@ interface Jugador {
 }
 
 export default function JuegoPage({ params }: JuegoPageProps) {
+  return (
+    <ErrorBoundary>
+      <JuegoPageInner params={params} />
+    </ErrorBoundary>
+  );
+}
+
+function JuegoPageInner({ params }: JuegoPageProps) {
   const { salaId } = use(params);
   const router = useRouter();
   const { jugadorId, isLoading: isSessionLoading } = useGameSession();
   const supabase = useMemo(() => createBrowserClient(), []);
 
-  // jugadorId y loading ahora vienen del hook useGameSession
+  // States (todos los hooks van al inicio)
+  // Declaraciones únicas de hooks (todas al inicio, sin duplicados)
   const [sala, setSala] = useState<{
     id: string;
     categorias: string[];
@@ -33,77 +45,64 @@ export default function JuegoPage({ params }: JuegoPageProps) {
     organizador_id: string;
   } | null>(null);
   const [ronda, setRonda] = useState<Ronda | null>(null);
-  const [jugadores, setJugadores] = useState<Jugador[]>([]);
+  const [jugadores, setJugadores] = useState<
+    {
+      id: string;
+      nombre: string;
+      es_organizador: boolean;
+      listo: boolean;
+    }[]
+  >([]);
   const [respuestas, setRespuestas] = useState<string[]>(["", "", "", "", ""]);
   const [listo, setListo] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
-
-  // Estado para ventana de 3 segundos y feedback de cambio de letra
   const [puedeCambiarLetra, setPuedeCambiarLetra] = useState(false);
   const [cambiandoLetra, setCambiandoLetra] = useState(false);
   const [errorLetra, setErrorLetra] = useState<string | null>(null);
 
-  // Ventana de 3 segundos desde que inicia la ronda
-  useEffect(() => {
-    setPuedeCambiarLetra(false);
-    setErrorLetra(null);
-    if (ronda && ronda.estado === "escribiendo") {
-      setPuedeCambiarLetra(true);
-      const timer = setTimeout(() => setPuedeCambiarLetra(false), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [ronda?.id, ronda?.estado]);
+  // Control de sesión y loading
+  const showSessionLoading = isSessionLoading;
+  const showNoSession = !isSessionLoading && !jugadorId;
 
-  // Handler para cambiar la letra
-  async function handleCambiarLetra() {
-    if (!yo?.id || !ronda?.id || !sala?.id) return;
-    setCambiandoLetra(true);
-    setErrorLetra(null);
-    try {
-      const res = await fetch("/api/cambiar-letra", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          salaId: sala.id,
-          rondaId: ronda.id,
-          jugadorId: yo.id,
-        }),
-      });
-      const data = await res.json();
-      if (!data.success) {
-        setErrorLetra(data.error || "No se pudo cambiar la letra");
-      }
-    } catch (e) {
-      setErrorLetra("Error de red");
-    } finally {
-      setCambiandoLetra(false);
-    }
-  }
-
-  if (isSessionLoading) {
-    return (
+  // Early returns control variables
+  let earlyContent: React.ReactNode = null;
+  if (showSessionLoading) {
+    earlyContent = (
       <div className="flex min-h-screen items-center justify-center">
         Cargando sesión...
       </div>
     );
-  }
-  if (!jugadorId) {
-    return (
+  } else if (showNoSession) {
+    earlyContent = (
       <div className="flex min-h-screen items-center justify-center">
         No se encontró tu sesión
       </div>
     );
   }
 
-  // Reset listo and respuestas when ronda changes (new round)
+  // useEffect: Ventana de 3 segundos desde que inicia la ronda
+  useEffect(() => {
+    setPuedeCambiarLetra(false);
+    setErrorLetra(null);
+    if (ronda && ronda.estado === "escribiendo") {
+      setPuedeCambiarLetra(true);
+      const timer = setTimeout(
+        () => setPuedeCambiarLetra(false),
+        GAME_CONFIG.LETTER_CHANGE_WINDOW_MS,
+      );
+      return () => clearTimeout(timer);
+    }
+  }, [ronda?.id, ronda?.estado]);
+
+  // useEffect: Reset listo y respuestas cuando cambia la ronda
   useEffect(() => {
     setListo(false);
     setRespuestas(["", "", "", "", ""]);
   }, [ronda?.id]);
 
-  // Obtener sala, ronda y jugadores
+  // useEffect: Obtener sala, ronda y jugadores
   useEffect(() => {
     async function fetchSalaRondaJugadores() {
       setLoading(true);
@@ -171,9 +170,9 @@ export default function JuegoPage({ params }: JuegoPageProps) {
     }
 
     fetchSalaRondaJugadores();
-  }, [salaId, supabase]);
+  }, [salaId, supabase, jugadorId, router]);
 
-  // Realtime subscripciones
+  // useEffect: Realtime subscripciones
   useEffect(() => {
     if (!salaId || !ronda?.id) return;
 
@@ -216,8 +215,7 @@ export default function JuegoPage({ params }: JuegoPageProps) {
               ? {
                   ...prev,
                   ...payload.new,
-                  estado: payload.new
-                    .estado as import("@/types/supabase").RondaEstado,
+                  estado: payload.new.estado as RondaEstado,
                 }
               : prev,
           );
@@ -231,7 +229,7 @@ export default function JuegoPage({ params }: JuegoPageProps) {
     };
   }, [salaId, ronda?.id, router, supabase]);
 
-  // Redirección a puntuar/resultados cuando la ronda pasa a puntuando
+  // useEffect: Redirección a puntuar/resultados cuando la ronda pasa a puntuando
   useEffect(() => {
     if (!ronda || ronda.estado !== "puntuando" || !jugadorId) return;
     const yo = jugadores.find((j) => j.id === jugadorId);
@@ -243,6 +241,33 @@ export default function JuegoPage({ params }: JuegoPageProps) {
       );
     }
   }, [ronda?.estado, jugadores, jugadorId, salaId, router]);
+
+  // Handler para cambiar la letra
+  async function handleCambiarLetra() {
+    const yo = jugadores.find((j) => j.id === jugadorId);
+    if (!yo?.id || !ronda?.id || !sala?.id) return;
+    setCambiandoLetra(true);
+    setErrorLetra(null);
+    try {
+      const res = await fetch("/api/cambiar-letra", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          salaId: sala.id,
+          rondaId: ronda.id,
+          jugadorId: yo.id,
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setErrorLetra(data.error || "No se pudo cambiar la letra");
+      }
+    } catch {
+      setErrorLetra("Error de red");
+    } finally {
+      setCambiandoLetra(false);
+    }
+  }
 
   // Contador de listos
   const listos = jugadores.filter((j) => j.listo).length;
@@ -301,17 +326,7 @@ export default function JuegoPage({ params }: JuegoPageProps) {
   }
 
   if (loading) {
-    return (
-      <main className="flex min-h-screen items-center justify-center">
-        <div className="w-full max-w-md">
-          <div className="animate-pulse space-y-6">
-            <div className="h-8 bg-gray-200 rounded w-1/2 mx-auto mb-4" />
-            <div className="h-16 bg-gray-200 rounded mb-4" />
-            <div className="h-40 bg-gray-200 rounded" />
-          </div>
-        </div>
-      </main>
-    );
+    return <LoadingSpinner size="fullscreen" message="Cargando juego..." />;
   }
 
   if (!jugadorId) {

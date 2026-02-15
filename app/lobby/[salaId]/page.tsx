@@ -1,17 +1,19 @@
 // app/lobby/[salaId]/page.tsx
 "use client";
 import { use, useEffect, useState, useMemo } from "react";
+import { ErrorBoundary } from "@/app/_components/ui/ErrorBoundary";
 import { useGameSession } from "@/app/_hooks/useGameSession";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { iniciarJuego } from "@/app/actions";
+import { VALIDATION_RULES } from "@/lib/constants/game";
 import {
   guardarCategoriaSugerida,
-  obtenerCategoriasSugeridas,
   eliminarCategoriaSugerida,
 } from "@/app/actions";
 import type { SalaEstado } from "@/types/supabase";
 import "./lobby-animations.css";
+import LoadingSpinner from "@/app/_components/ui/LoadingSpinner";
 
 type JugadorData = { id: string; nombre: string; es_organizador: boolean };
 
@@ -20,26 +22,20 @@ interface LobbyPageProps {
 }
 
 export default function LobbyPage({ params }: LobbyPageProps) {
+  return (
+    <ErrorBoundary>
+      <LobbyPageInner params={params} />
+    </ErrorBoundary>
+  );
+}
+
+function LobbyPageInner({ params }: LobbyPageProps) {
   const { salaId } = use(params);
   const router = useRouter();
   const { jugadorId, isLoading: isSessionLoading } = useGameSession();
   const supabase = useMemo(() => createBrowserClient(), []);
 
-  if (isSessionLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        Cargando sesión...
-      </div>
-    );
-  }
-  if (!jugadorId) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        No se encontró tu sesión
-      </div>
-    );
-  }
-
+  // Todos los hooks deben ir antes de cualquier return o lógica de renderizado
   const [sala, setSala] = useState<{
     id: string;
     codigo_invitacion: string;
@@ -47,7 +43,6 @@ export default function LobbyPage({ params }: LobbyPageProps) {
     estado: SalaEstado;
     organizador_id: string;
   } | null>(null);
-
   const [jugadores, setJugadores] = useState<JugadorData[]>([]);
   const [categorias, setCategorias] = useState<string[]>(["", "", "", "", ""]);
   const [sugerencias, setSugerencias] = useState<
@@ -64,50 +59,41 @@ export default function LobbyPage({ params }: LobbyPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [iniciando, setIniciando] = useState(false);
 
-  // Obtener sala y jugadores al montar
+  // Control de sesión y loading
+  const showSessionLoading = isSessionLoading;
+  const showNoSession = !isSessionLoading && !jugadorId;
+
+  // useEffect: Obtener sala y jugadores al montar
   useEffect(() => {
     if (!jugadorId) return;
-
     async function fetchSalaYJugadores() {
       setLoading(true);
-
       const { data: salaData } = await supabase
         .from("salas")
         .select("id, codigo_invitacion, categorias, estado, organizador_id")
         .eq("id", salaId)
         .single();
-
       if (!salaData) {
-        // Redirigir a home con mensaje si la sala no existe
         router.replace(`/?error=SalaNoEncontrada`);
         return;
       }
-
       setSala(salaData);
       setCategorias(
         salaData.categorias?.length === 5
           ? salaData.categorias
           : ["", "", "", "", ""],
       );
-
-      // Obtener jugadores
       const { data: jugadoresData } = await supabase
         .from("jugadores")
         .select("id, nombre, es_organizador")
         .eq("sala_id", salaId)
         .order("created_at", { ascending: true });
-
       setJugadores(jugadoresData || []);
-
-      // Verificar si soy organizador
       const yo = (jugadoresData || []).find(
         (j: JugadorData) => j.id === jugadorId,
       );
       setIsOrganizador(!!yo?.es_organizador);
-
-      // Si soy organizador, obtener sugerencias de categorías globales
       if (yo && yo.es_organizador) {
-        // Traer id y nombre para poder eliminar
         const supabase = createBrowserClient();
         const { data } = await supabase
           .from("categorias_sugeridas")
@@ -115,17 +101,14 @@ export default function LobbyPage({ params }: LobbyPageProps) {
           .order("created_at", { ascending: false });
         setSugerencias(data || []);
       }
-
       setLoading(false);
     }
-
     fetchSalaYJugadores();
-  }, [salaId, jugadorId, supabase]);
+  }, [salaId, jugadorId, supabase, router]);
 
-  // Realtime subscripciones
+  // useEffect: Realtime subscripciones
   useEffect(() => {
     if (!salaId) return;
-
     const jugadoresSub = supabase
       .channel(`jugadores-sala-${salaId}`)
       .on(
@@ -146,7 +129,6 @@ export default function LobbyPage({ params }: LobbyPageProps) {
         },
       )
       .subscribe();
-
     const salaSub = supabase
       .channel(`sala-${salaId}`)
       .on(
@@ -164,19 +146,33 @@ export default function LobbyPage({ params }: LobbyPageProps) {
             if (!prev) return prev;
             return { ...prev, ...newSala };
           });
-
           if (newSala.estado === "jugando") {
             router.push(`/juego/${salaId}?jugadorId=${jugadorId}`);
           }
         },
       )
       .subscribe();
-
     return () => {
       supabase.removeChannel(jugadoresSub);
       supabase.removeChannel(salaSub);
     };
   }, [salaId, router, supabase, jugadorId]);
+
+  // Early returns control variables
+  if (showSessionLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        Cargando sesión...
+      </div>
+    );
+  }
+  if (showNoSession) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        No se encontró tu sesión
+      </div>
+    );
+  }
 
   function handleCategoriaChange(idx: number, value: string) {
     setCategorias((prev) => prev.map((cat, i) => (i === idx ? value : cat)));
@@ -214,8 +210,10 @@ export default function LobbyPage({ params }: LobbyPageProps) {
     setIniciando(true);
     setError(null);
 
-    if (jugadores.length < 2) {
-      setError("Se requieren al menos 2 jugadores");
+    if (jugadores.length < VALIDATION_RULES.MIN_PLAYERS) {
+      setError(
+        `Se requieren al menos ${VALIDATION_RULES.MIN_PLAYERS} jugadores`,
+      );
       setIniciando(false);
       return;
     }
@@ -240,11 +238,7 @@ export default function LobbyPage({ params }: LobbyPageProps) {
   }
 
   if (loading || !jugadorId) {
-    return (
-      <main className="flex min-h-screen items-center justify-center">
-        <div className="text-center">Cargando...</div>
-      </main>
-    );
+    return <LoadingSpinner size="fullscreen" message="Cargando sala..." />;
   }
 
   if (!sala) return null;

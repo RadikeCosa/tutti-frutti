@@ -404,7 +404,7 @@ export async function finalizarPuntuacion({
     console.error("Error al actualizar jugadores:", jugadoresError);
     throw new Error("No se pudo actualizar jugadores");
   }
-  redirect(`/resultados/${salaId}/${rondaId}?jugadorId=${jugadorId}`);
+  // El redirect se maneja solo en el cliente por realtime
 }
 
 // --- Server Actions para resultados ---

@@ -1,5 +1,6 @@
 "use client";
 import { use, useEffect, useMemo, useState } from "react";
+import { ErrorBoundary } from "@/app/_components/ui/ErrorBoundary";
 import { useSearchParams, useRouter } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
 
@@ -18,6 +19,14 @@ interface RankingPageProps {
 }
 
 export default function RankingPage({ params }: RankingPageProps) {
+  return (
+    <ErrorBoundary>
+      <RankingPageInner params={params} />
+    </ErrorBoundary>
+  );
+}
+
+function RankingPageInner({ params }: RankingPageProps) {
   const { salaId } = use(params);
   const searchParams = useSearchParams();
   const router = useRouter();

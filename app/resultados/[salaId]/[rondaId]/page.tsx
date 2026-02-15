@@ -1,6 +1,7 @@
 // app/resultados/[salaId]/[rondaId]/page.tsx
 "use client";
-import { use, useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { ErrorBoundary } from "@/app/_components/ui/ErrorBoundary";
 import { useGameSession } from "@/app/_hooks/useGameSession";
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
@@ -30,41 +31,47 @@ interface ResultadosPageProps {
 }
 
 export default function ResultadosPage({ params }: ResultadosPageProps) {
-  const router = useRouter();
-  const { salaId, rondaId } = use(params);
-  const { jugadorId, isLoading: isSessionLoading } = useGameSession();
-  const supabase = useMemo(() => createBrowserClient(), []);
+  return (
+    <ErrorBoundary>
+      <ResultadosPageInner params={params} />
+    </ErrorBoundary>
+  );
+}
 
+import LoadingSpinner from "@/app/_components/ui/LoadingSpinner";
+
+function ResultadosPageInner({ params }: ResultadosPageProps) {
+  const router = useRouter();
+  const supabase = createBrowserClient();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [categorias, setCategorias] = useState<string[]>([]);
+  const [numeroRonda, setNumeroRonda] = useState<number>(0);
   const [resultados, setResultados] = useState<ResultadoRonda[]>([]);
   const [puntajesAcumulados, setPuntajesAcumulados] = useState<
     PuntajeAcumulado[]
   >([]);
-  const [categorias, setCategorias] = useState<string[]>([]);
-  const [numeroRonda, setNumeroRonda] = useState<number>(0);
   const [esOrganizador, setEsOrganizador] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [procesando, setProcesando] = useState(false);
 
-  if (isSessionLoading) {
-    return (
-      <main className="flex min-h-screen items-center justify-center">
-        <div className="text-center">Cargando sesión...</div>
-      </main>
-    );
-  }
-  if (!jugadorId) {
-    return (
-      <main className="flex min-h-screen items-center justify-center">
-        <div className="text-center">No se encontró tu sesión</div>
-      </main>
-    );
-  }
+  // Obtener salaId y rondaId de params
+  const [salaId, setSalaId] = useState<string | null>(null);
+  const [rondaId, setRondaId] = useState<string | null>(null);
+  const { jugadorId } = useGameSession();
 
   useEffect(() => {
+    params.then(({ salaId, rondaId }) => {
+      setSalaId(salaId);
+      setRondaId(rondaId);
+    });
+  }, [params]);
+
+  useEffect(() => {
+    if (!salaId || !rondaId) return;
     let channel: ReturnType<typeof supabase.channel> | null = null;
     let rondaChannel: ReturnType<typeof supabase.channel> | null = null;
     let salaChannel: ReturnType<typeof supabase.channel> | null = null;
+    let rondaUpdateChannel: ReturnType<typeof supabase.channel> | null = null;
 
     async function fetchResultados() {
       if (!jugadorId) {
@@ -112,7 +119,13 @@ export default function ResultadosPage({ params }: ResultadosPageProps) {
         }
 
         // Verificar si el jugador es organizador
-        const yo = jugadores.find((j) => j.id === jugadorId);
+        const yo = jugadores.find(
+          (j: unknown) =>
+            typeof j === "object" &&
+            j !== null &&
+            "id" in j &&
+            (j as { id: string }).id === jugadorId,
+        );
         setEsOrganizador(!!yo?.es_organizador);
 
         // Obtener respuestas de la ronda actual
@@ -134,7 +147,7 @@ export default function ResultadosPage({ params }: ResultadosPageProps) {
             nombre: jugador.nombre,
             respuestas: Array(5)
               .fill(null)
-              .map((_, idx) => ({
+              .map((_: unknown, idx: number) => ({
                 categoria: sala.categorias[idx] || `Cat ${idx + 1}`,
                 texto: "",
                 puntos: 0,
@@ -242,9 +255,35 @@ export default function ResultadosPage({ params }: ResultadosPageProps) {
           table: "rondas",
           filter: `sala_id=eq.${salaId}`,
         },
-        () => {
+        (payload) => {
+          // Log para depuración
+          // eslint-disable-next-line no-console
+          console.log(
+            "[Realtime][Resultados] Evento INSERT de nueva ronda recibido",
+            payload,
+          );
           // Si se crea una nueva ronda, redirigir a /juego/[salaId]
           router.replace(`/juego/${salaId}`);
+        },
+      )
+      .subscribe();
+
+    // Suscripción realtime a la tabla de rondas para detectar cambios de estado de la ronda actual
+    rondaUpdateChannel = supabase
+      .channel(`resultados-update-ronda-${rondaId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "rondas",
+          filter: `id=eq.${rondaId}`,
+        },
+        (payload) => {
+          // Si cambia el estado de la ronda, refrescar resultados
+          if (payload.new && payload.new.estado) {
+            fetchResultados();
+          }
         },
       )
       .subscribe();
@@ -260,14 +299,30 @@ export default function ResultadosPage({ params }: ResultadosPageProps) {
           table: "salas",
           filter: `id=eq.${salaId}`,
         },
-        (payload) => {
-          // Si el estado de la sala es "jugando", redirigir a /juego/[salaId]
-          if (payload.new && payload.new.estado === "jugando") {
-            router.replace(`/juego/${salaId}`);
-          }
-          // Si el estado de la sala es "finalizada", redirigir a /ranking/[salaId]
-          if (payload.new && payload.new.estado === "finalizada") {
-            router.replace(`/ranking/${salaId}`);
+        (payload: unknown) => {
+          if (
+            typeof payload === "object" &&
+            payload !== null &&
+            "new" in payload &&
+            typeof (payload as { new?: unknown }).new === "object" &&
+            (payload as { new?: unknown }).new !== null &&
+            "estado" in (payload as { new: { estado?: string } }).new
+          ) {
+            const estado = (
+              (payload as { new: { estado?: string } }).new as {
+                estado?: string;
+              }
+            ).estado;
+            // Log para depuración
+            // eslint-disable-next-line no-console
+            console.log("[Realtime][Resultados] UPDATE sala estado:", estado);
+            if (estado === "jugando") {
+              // Redirigir SIEMPRE a la nueva ronda
+              router.replace(`/juego/${salaId}`);
+            }
+            if (estado === "finalizada") {
+              router.replace(`/ranking/${salaId}`);
+            }
           }
         },
       )
@@ -277,11 +332,12 @@ export default function ResultadosPage({ params }: ResultadosPageProps) {
       if (channel) supabase.removeChannel(channel);
       if (rondaChannel) supabase.removeChannel(rondaChannel);
       if (salaChannel) supabase.removeChannel(salaChannel);
+      if (rondaUpdateChannel) supabase.removeChannel(rondaUpdateChannel);
     };
   }, [salaId, rondaId, jugadorId, supabase, router]);
 
   const handleNuevaRonda = async () => {
-    if (!jugadorId) {
+    if (!jugadorId || !salaId) {
       setError("No se encontró tu sesión");
       return;
     }
@@ -293,12 +349,13 @@ export default function ResultadosPage({ params }: ResultadosPageProps) {
       const error =
         e instanceof Error ? e : new Error("Error al crear nueva ronda");
       setError(error.message);
+    } finally {
       setProcesando(false);
     }
   };
 
   const handleFinalizarJuego = async () => {
-    if (!jugadorId) {
+    if (!jugadorId || !salaId) {
       setError("No se encontró tu sesión");
       return;
     }
@@ -310,6 +367,7 @@ export default function ResultadosPage({ params }: ResultadosPageProps) {
       const error =
         e instanceof Error ? e : new Error("Error al finalizar juego");
       setError(error.message);
+    } finally {
       setProcesando(false);
     }
   };
@@ -317,7 +375,7 @@ export default function ResultadosPage({ params }: ResultadosPageProps) {
   if (loading || !jugadorId) {
     return (
       <main className="flex min-h-screen items-center justify-center">
-        <div className="text-center">Cargando...</div>
+        <LoadingSpinner message="Cargando resultados..." />
       </main>
     );
   }

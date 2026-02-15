@@ -1,10 +1,11 @@
 "use client";
 import { use, useEffect, useMemo, useState } from "react";
+import LoadingSpinner from "@/app/_components/ui/LoadingSpinner";
+import { ErrorBoundary } from "@/app/_components/ui/ErrorBoundary";
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { asignarPuntos, finalizarPuntuacion } from "@/app/actions";
 import { useGameSession } from "@/app/_hooks/useGameSession";
-import type { Ronda } from "@/types/supabase";
 
 interface Sala {
   readonly categorias: readonly string[];
@@ -29,6 +30,14 @@ interface PuntuarPageProps {
 }
 
 export default function PuntuarPage({ params }: PuntuarPageProps) {
+  return (
+    <ErrorBoundary>
+      <PuntuarPageInner params={params} />
+    </ErrorBoundary>
+  );
+}
+
+function PuntuarPageInner({ params }: PuntuarPageProps) {
   const router = useRouter();
   const { salaId, rondaId } = use(params);
   const { jugadorId, isLoading: isSessionLoading } = useGameSession();
@@ -41,37 +50,15 @@ export default function PuntuarPage({ params }: PuntuarPageProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
-
-  if (isSessionLoading) {
-    return (
-      <main className="flex min-h-screen items-center justify-center">
-        <div className="text-center">Cargando sesión...</div>
-      </main>
-    );
-  }
-  if (!jugadorId) {
-    return (
-      <main className="flex min-h-screen items-center justify-center">
-        <div className="text-center">No se encontró tu sesión</div>
-      </main>
-    );
-  }
+  const [esOrganizador, setEsOrganizador] = useState(false);
 
   useEffect(() => {
-    let channel: ReturnType<typeof supabase.channel> | null = null;
-    let rondaChannel: ReturnType<typeof supabase.channel> | null = null;
-    let salaChannel: ReturnType<typeof supabase.channel> | null = null;
+    if (!jugadorId) return;
+    let rondaUpdateChannel: ReturnType<typeof supabase.channel> | null = null;
 
     async function fetchData() {
-      if (!jugadorId) {
-        setError("No se encontró el jugadorId.");
-        setLoading(false);
-        return;
-      }
-
       setLoading(true);
       setError(null);
-
       try {
         // Obtener sala
         const { data: salaData, error: salaError } = await supabase
@@ -79,29 +66,22 @@ export default function PuntuarPage({ params }: PuntuarPageProps) {
           .select("categorias")
           .eq("id", salaId)
           .single();
-
         if (salaError || !salaData) {
           throw salaError || new Error("Sala no encontrada");
         }
         setSala(salaData);
 
-        // Validar organizador
+        // Obtener jugador actual (para saber si es organizador)
         const { data: jugador, error: jugadorError } = await supabase
           .from("jugadores")
           .select("id, es_organizador")
           .eq("id", jugadorId)
           .eq("sala_id", salaId)
           .single();
-
         if (jugadorError || !jugador) {
           throw jugadorError || new Error("Jugador no encontrado");
         }
-
-        if (!jugador.es_organizador) {
-          setError("Solo el organizador puede puntuar.");
-          setLoading(false);
-          return;
-        }
+        setEsOrganizador(jugador.es_organizador);
 
         // Obtener jugadores
         const { data: jugadoresData, error: jugadoresError } = await supabase
@@ -109,7 +89,6 @@ export default function PuntuarPage({ params }: PuntuarPageProps) {
           .select("id, nombre")
           .eq("sala_id", salaId)
           .order("nombre", { ascending: true });
-
         if (jugadoresError || !jugadoresData) {
           throw jugadoresError || new Error("No se pudieron obtener jugadores");
         }
@@ -122,13 +101,17 @@ export default function PuntuarPage({ params }: PuntuarPageProps) {
           .eq("ronda_id", rondaId)
           .order("categoria_index", { ascending: true })
           .order("id", { ascending: true });
-
         if (respError || !respuestas) {
           throw respError || new Error("No se pudieron obtener respuestas");
         }
-
         setRespuestas(respuestas);
-      } catch (e: unknown) {
+        // eslint-disable-next-line no-console
+        console.log("[fetchData][Puntuar] Estado actualizado", {
+          salaData,
+          jugadoresData,
+          respuestas,
+        });
+      } catch (e) {
         const error = e instanceof Error ? e : new Error("Error inesperado");
         setError(error.message);
       } finally {
@@ -138,99 +121,55 @@ export default function PuntuarPage({ params }: PuntuarPageProps) {
 
     fetchData();
 
-    // Suscripción realtime a respuestas de la ronda actual (por si otro organizador edita o para futuras mejoras)
-    channel = supabase
-      .channel(`puntuar_respuestas_ronda_${rondaId}`)
+    // Suscripción realtime ÚNICA: cambios de estado de la ronda
+    rondaUpdateChannel = supabase
+      .channel(`puntuar-update-ronda-${rondaId}`)
       .on(
         "postgres_changes",
         {
-          event: "*",
+          event: "UPDATE",
           schema: "public",
-          table: "respuestas",
-          filter: `ronda_id=eq.${rondaId}`,
+          table: "rondas",
+          filter: `id=eq.${rondaId}`,
         },
-        () => {
+        (payload) => {
+          // eslint-disable-next-line no-console
+          console.log("[Realtime][Puntuar] UPDATE ronda:", payload);
           fetchData();
-        },
-      )
-      .subscribe();
-
-    // Suscripción realtime a la tabla de rondas para detectar nueva ronda
-    rondaChannel = supabase
-      .channel(`puntuar-rondas-sala-${salaId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "rondas",
-          filter: `sala_id=eq.${salaId}`,
-        },
-        () => {
-          // Si se crea una nueva ronda, redirigir a /juego/[salaId]
-          router.replace(`/juego/${salaId}`);
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "DELETE",
-          schema: "public",
-          table: "rondas",
-          filter: `id=eq.${rondaId}`,
-        },
-        () => {
-          // Si la ronda actual se elimina, redirigir a /juego/[salaId]
-          router.replace(`/juego/${salaId}`);
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "rondas",
-          filter: `id=eq.${rondaId}`,
-        },
-        (payload) => {
-          // Si el estado de la ronda deja de ser 'puntuando', redirigir a /resultados/[salaId]/[rondaId]?jugadorId=...
-          if (payload.new && payload.new.estado !== "puntuando") {
-            const jugadorIdParam =
-              localStorage.getItem("jugadorId") || jugadorId || "";
-            router.replace(
-              `/resultados/${salaId}/${rondaId}?jugadorId=${jugadorIdParam}`,
+          if (payload.new) {
+            // eslint-disable-next-line no-console
+            console.log(
+              "[Realtime][Puntuar] Estado ronda:",
+              payload.new.estado,
             );
-          }
-        },
-      )
-      .subscribe();
-
-    // Suscripción realtime a la tabla de salas para detectar cambio de estado global
-    salaChannel = supabase
-      .channel(`puntuar-sala-estado-${salaId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "salas",
-          filter: `id=eq.${salaId}`,
-        },
-        (payload) => {
-          // Si el estado de la sala es "jugando", redirigir a /juego/[salaId]
-          if (payload.new && payload.new.estado === "jugando") {
-            router.replace(`/juego/${salaId}`);
+            if (payload.new.estado === "completada") {
+              // eslint-disable-next-line no-console
+              console.log(
+                "[Realtime][Puntuar] Redirigiendo a resultados por ronda completada (forzado para todos)",
+              );
+              const jugadorIdParam =
+                localStorage.getItem("jugadorId") || jugadorId || "";
+              router.replace(
+                `/resultados/${salaId}/${rondaId}?jugadorId=${jugadorIdParam}`,
+              );
+            }
           }
         },
       )
       .subscribe();
 
     return () => {
-      if (channel) supabase.removeChannel(channel);
-      if (rondaChannel) supabase.removeChannel(rondaChannel);
-      if (salaChannel) supabase.removeChannel(salaChannel);
+      if (rondaUpdateChannel) supabase.removeChannel(rondaUpdateChannel);
     };
   }, [salaId, rondaId, jugadorId, supabase, router]);
+
+  if (isSessionLoading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center">
+        <div className="text-center">Cargando sesión...</div>
+      </main>
+    );
+  }
 
   const handlePuntosChange = (respuestaId: string, puntos: number) => {
     setPuntosAsignados((prev) => ({ ...prev, [respuestaId]: puntos }));
@@ -256,6 +195,22 @@ export default function PuntuarPage({ params }: PuntuarPageProps) {
 
       // Finalizar puntuación
       await finalizarPuntuacion({ salaId, rondaId, jugadorId });
+
+      // Refuerzo: el organizador navega inmediatamente si la ronda ya está completada
+      if (esOrganizador) {
+        const { data: ronda, error: rondaError } = await supabase
+          .from("rondas")
+          .select("estado")
+          .eq("id", rondaId)
+          .single();
+        if (!rondaError && ronda && ronda.estado === "completada") {
+          const jugadorIdParam =
+            localStorage.getItem("jugadorId") || jugadorId || "";
+          router.replace(
+            `/resultados/${salaId}/${rondaId}?jugadorId=${jugadorIdParam}`,
+          );
+        }
+      }
     } catch (e: unknown) {
       const error =
         e instanceof Error ? e : new Error("Error al asignar puntos");
@@ -267,9 +222,7 @@ export default function PuntuarPage({ params }: PuntuarPageProps) {
 
   if (loading || !jugadorId) {
     return (
-      <main className="flex min-h-screen items-center justify-center">
-        <div className="text-center">Cargando...</div>
-      </main>
+      <LoadingSpinner size="fullscreen" message="Cargando puntuación..." />
     );
   }
 
@@ -316,7 +269,7 @@ export default function PuntuarPage({ params }: PuntuarPageProps) {
                   {sala.categorias.map((cat, idx) => (
                     <th
                       key={idx}
-                      className="border-b px-4 py-3 text-center font-semibold min-w-[200px]"
+                      className="border-b px-4 py-3 text-center font-semibold min-w-50"
                     >
                       {cat}
                     </th>
@@ -344,7 +297,7 @@ export default function PuntuarPage({ params }: PuntuarPageProps) {
                                 </span>
                               )}
                             </div>
-                            {respuesta && (
+                            {respuesta && esOrganizador && (
                               <div className="flex items-center gap-2">
                                 <input
                                   type="number"
@@ -375,15 +328,17 @@ export default function PuntuarPage({ params }: PuntuarPageProps) {
           </div>
         </div>
 
-        <div className="flex justify-center">
-          <button
-            className="px-8 py-3 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-            onClick={handleFinalizarPuntuacion}
-            disabled={enviando}
-          >
-            {enviando ? "Guardando..." : "Finalizar Puntuación"}
-          </button>
-        </div>
+        {esOrganizador && (
+          <div className="flex justify-center">
+            <button
+              className="px-8 py-3 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={handleFinalizarPuntuacion}
+              disabled={enviando}
+            >
+              {enviando ? "Guardando..." : "Finalizar Puntuación"}
+            </button>
+          </div>
+        )}
       </div>
     </main>
   );
